@@ -208,12 +208,12 @@ onMounted(fetchRoutes)
 
 .stats-footer {
   margin-top: 16px;
-  color: #909399;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .form-tip {
-  color: #909399;
+  color: var(--text-secondary);
   font-size: 12px;
   margin-top: 4px;
 }

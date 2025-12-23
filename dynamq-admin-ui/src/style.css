@@ -101,6 +101,18 @@ body,
 .dark .el-card {
   background: var(--bg-surface);
   border: none;
+  --el-card-bg-color: var(--bg-surface);
+}
+
+.dark .el-card__header {
+  background: transparent;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-primary);
+}
+
+.dark .el-card__body {
+  background: transparent;
+  color: var(--text-primary);
 }
 
 .dark .el-dialog {
@@ -110,13 +122,17 @@ body,
 }
 
 .dark .el-input__wrapper {
-  background: var(--bg-surface);
+  background: var(--bg-hover);
   box-shadow: none !important;
-  border: none;
+  border: 1px solid var(--border-default);
 }
 
 .dark .el-input__inner {
   color: var(--text-primary);
+}
+
+.dark .el-input__inner::placeholder {
+  color: var(--text-tertiary);
 }
 
 .dark .el-table {
@@ -130,13 +146,90 @@ body,
 }
 
 .dark .el-descriptions__label {
-  background: var(--bg-surface);
+  background: var(--bg-hover);
   color: var(--text-secondary);
+  border-color: var(--border-default);
 }
 
 .dark .el-descriptions__content {
   background: transparent;
   color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.dark .el-descriptions {
+  --el-descriptions-item-bordered-label-background: var(--bg-hover);
+}
+
+/* Statistic */
+.dark .el-statistic__head {
+  color: var(--text-secondary);
+}
+
+.dark .el-statistic__content {
+  color: var(--text-primary);
+}
+
+/* Progress */
+.dark .el-progress__text {
+  color: var(--text-primary);
+}
+
+/* Alert */
+.dark .el-alert--info {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dark .el-alert__title {
+  color: var(--text-primary);
+}
+
+/* Button */
+.dark .el-button--default {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.dark .el-button--default:hover {
+  background: var(--bg-active);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+/* Select */
+.dark .el-select__wrapper {
+  background: var(--bg-hover);
+  box-shadow: none;
+}
+
+.dark .el-select-dropdown {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+.dark .el-select-dropdown__item {
+  color: var(--text-primary);
+}
+
+.dark .el-select-dropdown__item:hover {
+  background: var(--bg-hover);
+}
+
+/* Form */
+.dark .el-form-item__label {
+  color: var(--text-secondary);
+}
+
+/* Popconfirm */
+.dark .el-popconfirm {
+  background: var(--bg-surface);
+}
+
+/* Switch */
+.dark .el-switch__label {
+  color: var(--text-secondary);
 }
 
 /* Status Dots with Glow */

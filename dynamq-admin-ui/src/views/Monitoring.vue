@@ -219,12 +219,26 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 .stat-card { text-align: center; }
 .status-card { height: 200px; }
 .health-items { display: flex; flex-direction: column; gap: 10px; }
-.health-item { display: flex; justify-content: space-between; padding: 6px 10px; background: #f5f7fa; border-radius: 4px; }
+.health-item { 
+  display: flex; 
+  justify-content: space-between; 
+  padding: 6px 10px; 
+  background: var(--bg-hover); 
+  border-radius: 4px; 
+  color: var(--text-primary);
+}
 .memory-info { display: flex; flex-direction: column; align-items: center; }
-.memory-text { margin-top: 6px; color: #909399; font-size: 12px; }
+.memory-text { margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
 .kafka-stats { display: flex; flex-direction: column; gap: 10px; }
-.kafka-item { display: flex; justify-content: space-between; padding: 6px 10px; background: #f5f7fa; border-radius: 4px; }
+.kafka-item { 
+  display: flex; 
+  justify-content: space-between; 
+  padding: 6px 10px; 
+  background: var(--bg-hover); 
+  border-radius: 4px;
+  color: var(--text-primary);
+}
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .chart { height: 250px; }
-code { background: #f0f2f5; padding: 2px 6px; border-radius: 4px; }
+code { background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; color: var(--text-primary); }
 </style>

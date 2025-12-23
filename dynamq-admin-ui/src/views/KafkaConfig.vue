@@ -1,123 +1,123 @@
 <template>
   <div class="kafka-config">
-    <el-row :gutter="20">
-      <!-- Connection Status Card -->
-      <el-col :span="8">
-        <el-card class="status-card">
-          <template #header>
-            <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Connection /></el-icon>连接状态</span>
-          </template>
-          <div class="status-content" v-loading="loadingStatus">
-            <div class="status-item">
-              <span class="label">状态</span>
-              <el-tag :type="status.connected ? 'success' : 'danger'">
-                {{ status.connected ? '已连接' : '未连接' }}
-              </el-tag>
-            </div>
-            <div class="status-item">
-              <span class="label">服务器</span>
-              <span class="value">{{ status.bootstrapServers }}</span>
-            </div>
-            <div class="status-item">
-              <span class="label">路由数量</span>
-              <span class="value">{{ status.routeCount }} ({{ status.enabledRoutes }} 已启用)</span>
-            </div>
-          </div>
-          <el-button type="primary" @click="fetchStatus" :loading="loadingStatus" style="width: 100%; margin-top: 16px">
-            刷新状态
-          </el-button>
-        </el-card>
-      </el-col>
+    <!-- Page Header -->
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Kafka 配置</h1>
+        <p class="page-subtitle">MQTT 到 Kafka 数据桥接配置</p>
+      </div>
+      <button @click="refreshAll" class="pill-btn secondary small" :disabled="loadingStatus || loadingConfig">
+        <el-icon :class="{ spin: loadingStatus || loadingConfig }"><Refresh /></el-icon>
+        刷新
+      </button>
+    </header>
 
-      <!-- Kafka Configuration Card -->
-      <el-col :span="16">
-        <el-card>
-          <template #header>
-            <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Setting /></el-icon>Kafka 配置</span>
-          </template>
-          <div v-loading="loadingConfig">
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="启用状态">
-                <el-tag :type="config.enabled ? 'success' : 'info'">
-                  {{ config.enabled ? '已启用' : '已禁用' }}
-                </el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="Bootstrap Servers">
-                {{ config.bootstrapServers }}
-              </el-descriptions-item>
-              <el-descriptions-item label="Topic 前缀">
-                {{ config.topicPrefix }}
-              </el-descriptions-item>
-              <el-descriptions-item label="Acks">
-                {{ config.producer?.acks }}
-              </el-descriptions-item>
-              <el-descriptions-item label="重试次数">
-                {{ config.producer?.retries }}
-              </el-descriptions-item>
-              <el-descriptions-item label="批量大小">
-                {{ config.producer?.batchSize }} bytes
-              </el-descriptions-item>
-              <el-descriptions-item label="Linger Ms">
-                {{ config.producer?.lingerMs }} ms
-              </el-descriptions-item>
-            </el-descriptions>
-
-            <el-alert 
-              type="info" 
-              :closable="false"
-              style="margin-top: 16px"
-            >
-              <template #title>
-                配置文件说明
-              </template>
-              Kafka 配置存储在 <code>application.yml</code> 文件中。
-              如需修改配置，请编辑配置文件并重启服务。
-            </el-alert>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- Route Statistics Card -->
-    <el-card style="margin-top: 20px">
-      <template #header>
-        <div class="card-header">
-          <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><DataLine /></el-icon>路由统计</span>
-          <el-button type="primary" link @click="$router.push('/routes')">
-            管理路由 →
-          </el-button>
+    <!-- Status Cards Row -->
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-header">
+          <span class="metric-icon" :class="status.connected ? 'online' : 'offline'">
+            <el-icon :size="20"><Connection /></el-icon>
+          </span>
         </div>
-      </template>
-      <el-row :gutter="20">
-        <el-col :span="6">
-          <el-statistic title="总路由数" :value="status.routeCount" />
-        </el-col>
-        <el-col :span="6">
-          <el-statistic title="已启用" :value="status.enabledRoutes">
-            <template #suffix>
-              <span style="color: #67c23a">✓</span>
-            </template>
-          </el-statistic>
-        </el-col>
-        <el-col :span="6">
-          <el-statistic title="已禁用" :value="status.routeCount - status.enabledRoutes">
-            <template #suffix>
-              <span style="color: #909399">○</span>
-            </template>
-          </el-statistic>
-        </el-col>
-        <el-col :span="6">
-          <el-statistic title="Kafka 状态" :value="config.enabled ? '运行中' : '已禁用'" />
-        </el-col>
-      </el-row>
-    </el-card>
+        <span class="metric-value">{{ status.connected ? '在线' : '离线' }}</span>
+        <span class="metric-label">连接状态</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-value">{{ status.routeCount }}</span>
+        <span class="metric-label">总路由数</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-value success">{{ status.enabledRoutes }}</span>
+        <span class="metric-label">已启用</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-value muted">{{ status.routeCount - status.enabledRoutes }}</span>
+        <span class="metric-label">已禁用</span>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content-grid">
+      <!-- Connection Info -->
+      <section class="section-card">
+        <div class="section-header">
+          <el-icon :size="18"><Connection /></el-icon>
+          <h2>连接信息</h2>
+        </div>
+        <div class="info-grid" v-loading="loadingStatus">
+          <div class="info-item">
+            <span class="info-label">状态</span>
+            <span class="pill-badge" :class="status.connected ? 'success' : 'danger'">
+              <span class="status-dot" :class="status.connected ? 'online' : 'offline'"></span>
+              {{ status.connected ? '已连接' : '未连接' }}
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">服务器地址</span>
+            <code class="mono-text">{{ status.bootstrapServers || '-' }}</code>
+          </div>
+          <div class="info-item full-width">
+            <span class="info-label">路由统计</span>
+            <span class="info-value">{{ status.routeCount }} 条路由，{{ status.enabledRoutes }} 条已启用</span>
+          </div>
+        </div>
+        <div class="section-actions">
+          <button @click="$router.push('/routes')" class="pill-btn small">
+            管理路由 →
+          </button>
+        </div>
+      </section>
+
+      <!-- Producer Config -->
+      <section class="section-card">
+        <div class="section-header">
+          <el-icon :size="18"><Setting /></el-icon>
+          <h2>生产者配置</h2>
+        </div>
+        <div class="info-grid" v-loading="loadingConfig">
+          <div class="info-item">
+            <span class="info-label">启用状态</span>
+            <span class="pill-badge" :class="config.enabled ? 'success' : 'muted'">
+              {{ config.enabled ? '已启用' : '已禁用' }}
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Topic 前缀</span>
+            <code class="mono-text">{{ config.topicPrefix || '-' }}</code>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Acks</span>
+            <span class="info-value">{{ config.producer?.acks || '-' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">重试次数</span>
+            <span class="info-value">{{ config.producer?.retries || '-' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">批量大小</span>
+            <span class="info-value">{{ formatBytes(config.producer?.batchSize) }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Linger</span>
+            <span class="info-value">{{ config.producer?.lingerMs || 0 }} ms</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Footer Note -->
+    <div class="footer-note">
+      <el-icon :size="16"><InfoFilled /></el-icon>
+      <span>Kafka 配置存储在 <code>application.yml</code> 文件中，如需修改请编辑配置文件并重启服务。</span>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Connection, Setting, DataLine } from '@element-plus/icons-vue'
+import { Connection, Setting, Refresh, InfoFilled } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
@@ -163,6 +163,18 @@ const fetchStatus = async () => {
   }
 }
 
+const refreshAll = () => {
+  fetchConfig()
+  fetchStatus()
+}
+
+const formatBytes = (bytes) => {
+  if (!bytes) return '-'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 onMounted(() => {
   fetchConfig()
   fetchStatus()
@@ -171,47 +183,199 @@ onMounted(() => {
 
 <style scoped>
 .kafka-config {
-  padding: 20px;
+  max-width: 1000px;
 }
 
-.status-card {
-  height: 100%;
-}
-
-.status-content {
-  min-height: 120px;
-}
-
-.status-item {
+/* Page Header */
+.page-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Metrics Row */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.metric-card {
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metric-header {
+  margin-bottom: 8px;
+}
+
+.metric-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #ebeef5;
+  justify-content: center;
+  color: white;
 }
 
-.status-item:last-child {
-  border-bottom: none;
+.metric-icon.online {
+  background: var(--success);
+  box-shadow: 0 0 20px rgba(52, 168, 83, 0.4);
 }
 
-.status-item .label {
-  color: #909399;
+.metric-icon.offline {
+  background: var(--text-tertiary);
 }
 
-.status-item .value {
+.metric-value {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.metric-value.success {
+  color: var(--success);
+}
+
+.metric-value.muted {
+  color: var(--text-tertiary);
+}
+
+.metric-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Content Grid */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+/* Section Card */
+.section-card {
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.section-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Info Grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.info-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-value {
+  font-size: 14px;
   font-weight: 500;
+  color: var(--text-primary);
 }
 
-.card-header {
+.mono-text {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg-hover);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+/* Section Actions */
+.section-actions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+
+/* Footer Note */
+.footer-note {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: var(--bg-page);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
-code {
-  background: #f5f7fa;
+.footer-note code {
+  background: var(--bg-hover);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: monospace;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Responsive */
+@media (max-width: 800px) {
+  .metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
