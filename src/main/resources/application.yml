@@ -1,0 +1,75 @@
+dynamq:
+  server:
+    port: 1883
+    ssl-port: 8883
+    websocket-port: 8083
+    max-connections: 150000
+    verticle-instances: 8
+    
+  mqtt:
+    max-message-size: 65536
+    default-qos: 1
+    keep-alive-max: 300
+    session-expiry: 86400
+    
+  ssl:
+    enabled: false
+    cert-path: ${SSL_CERT_PATH:certs/server.crt}
+    key-path: ${SSL_KEY_PATH:certs/server.key}
+    key-password: ${SSL_KEY_PASSWORD:}
+    client-auth: none
+    
+  websocket:
+    enabled: false
+    path: /mqtt
+    
+  auth:
+    enabled: false
+    provider: simple
+    
+  cluster:
+    enabled: false
+    type: hazelcast
+    node-name: ${HOSTNAME:node-1}
+    
+  admin:
+    port: 8080
+    auth:
+      enabled: true
+      api-key: ${ADMIN_API_KEY:dynamq-admin-secret-key}
+    rate-limit:
+      enabled: true
+      max-connections-per-ip: 100
+      connect-rate-per-second: 50
+    
+  redis:
+    enabled: true
+    connection-string: redis://:cqmygysdss@yelc.eu.org:6379
+    max-pool-size: 32
+    max-waiting-handlers: 64
+    password: 
+    
+  kafka:
+    enabled: true
+    bootstrap-servers: yelc.eu.org:9092
+    topic-prefix: dynamq.
+    producer:
+      acks: "1"
+      retries: 3
+      batch-size: 16384
+      linger-ms: 5
+    consumer:
+      group-id: dynamq-broker
+      auto-offset-reset: latest
+      enable-auto-commit: true
+    
+  metrics:
+    enabled: true
+    port: 9090
+    path: /metrics
+
+logging:
+  level:
+    root: INFO
+    org.dynabot: DEBUG
+    io.vertx: INFO

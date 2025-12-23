@@ -1,0 +1,35 @@
+version: '3.8'
+
+# 服务器 A: dynamq-1 + dynamq-2
+# 部署到第一台服务器
+
+services:
+  # DynaMQ Broker Node 1
+  dynamq-1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: dynamq-1
+    environment:
+      - NODE_NAME=dynamq-1
+      - MQTT_PORT=1883
+      - ADMIN_PORT=8080
+    ports:
+      - "1883:1883"
+      - "8080:8080"
+    restart: unless-stopped
+
+  # DynaMQ Broker Node 2
+  dynamq-2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: dynamq-2
+    environment:
+      - NODE_NAME=dynamq-2
+      - MQTT_PORT=1883
+      - ADMIN_PORT=8080
+    ports:
+      - "1884:1883"
+      - "8081:8080"
+    restart: unless-stopped

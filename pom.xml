@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.dynabot</groupId>
+    <artifactId>DynaMQ</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>DynaMQ</name>
+    <description>High-performance MQTT Broker based on Vert.x for million-scale IoT devices</description>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- Dependency Versions -->
+        <vertx.version>4.5.11</vertx.version>
+        <hazelcast.version>5.3.6</hazelcast.version>
+        <micrometer.version>1.12.2</micrometer.version>
+        <jackson.version>2.16.1</jackson.version>
+        <lombok.version>1.18.30</lombok.version>
+        <slf4j.version>2.0.9</slf4j.version>
+        <logback.version>1.4.14</logback.version>
+        <junit.version>5.10.1</junit.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.vertx</groupId>
+                <artifactId>vertx-stack-depchain</artifactId>
+                <version>${vertx.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Vert.x Core -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-core</artifactId>
+        </dependency>
+
+        <!-- Vert.x MQTT Server -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-mqtt</artifactId>
+        </dependency>
+
+        <!-- Vert.x Web (for health checks and metrics endpoint) -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-web</artifactId>
+        </dependency>
+
+        <!-- Vert.x Config -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-config-yaml</artifactId>
+        </dependency>
+
+        <!-- Vert.x Hazelcast Cluster Manager -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-hazelcast</artifactId>
+        </dependency>
+
+        <!-- Vert.x Redis Client -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-redis-client</artifactId>
+        </dependency>
+
+        <!-- Vert.x Kafka Client -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-kafka-client</artifactId>
+        </dependency>
+
+        <!-- Vert.x Micrometer Metrics -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-micrometer-metrics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <version>${micrometer.version}</version>
+        </dependency>
+
+        <!-- Hazelcast -->
+        <dependency>
+            <groupId>com.hazelcast</groupId>
+            <artifactId>hazelcast</artifactId>
+            <version>${hazelcast.version}</version>
+        </dependency>
+
+        <!-- Jackson JSON -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- Shade Plugin for Fat JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>org.dynabot.DynaMQApplication</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Surefire for Unit Tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.2</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>
