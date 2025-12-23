@@ -38,7 +38,7 @@
     <el-row :gutter="16" style="margin-top: 16px">
       <el-col :span="8">
         <el-card class="status-card">
-          <template #header><span>🏥 组件健康</span></template>
+          <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><FirstAidKit /></el-icon>组件健康</span></template>
           <div class="health-items" v-loading="loadingHealth">
             <div class="health-item" v-for="(comp, key) in health.components" :key="key">
               <span>{{ key.toUpperCase() }}</span>
@@ -51,7 +51,7 @@
       </el-col>
       <el-col :span="8">
         <el-card class="status-card">
-          <template #header><span>💾 内存使用</span></template>
+          <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Cpu /></el-icon>内存使用</span></template>
           <div class="memory-info">
             <el-progress type="dashboard" :percentage="metrics.memory?.usedPercent || 0" :color="getMemoryColor(metrics.memory?.usedPercent)" />
             <div class="memory-text">{{ formatBytes(metrics.memory?.used) }} / {{ formatBytes(metrics.memory?.total) }}</div>
@@ -60,7 +60,7 @@
       </el-col>
       <el-col :span="8">
         <el-card class="status-card">
-          <template #header><span>📦 Kafka 统计</span></template>
+          <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Box /></el-icon>Kafka 统计</span></template>
           <div class="kafka-stats">
             <div class="kafka-item">
               <span>发送成功</span>
@@ -85,7 +85,7 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>📈 连接数趋势</span>
+              <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><TrendCharts /></el-icon>连接数趋势</span>
               <el-button type="primary" link size="small" @click="clearHistory">清除</el-button>
             </div>
           </template>
@@ -94,7 +94,7 @@
       </el-col>
       <el-col :span="8">
         <el-card>
-          <template #header><span>📊 QoS 分布</span></template>
+          <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><PieChartIcon /></el-icon>QoS 分布</span></template>
           <v-chart class="chart" :option="qosChartOption" autoresize />
         </el-card>
       </el-col>
@@ -102,7 +102,7 @@
 
     <!-- Prometheus Info -->
     <el-card style="margin-top: 16px">
-      <template #header><span>🔗 Prometheus</span></template>
+      <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Link /></el-icon>Prometheus</span></template>
       <el-alert type="info" :closable="false" show-icon>
         <template #title>指标端点: <code>http://localhost:9090/metrics</code></template>
       </el-alert>
@@ -113,6 +113,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { FirstAidKit, Cpu, Box, TrendCharts, PieChart as PieChartIcon, Link } from '@element-plus/icons-vue'
 import axios from 'axios'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'

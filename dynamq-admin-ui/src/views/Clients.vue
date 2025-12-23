@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Connection, Timer, User } from '@element-plus/icons-vue'
+import { Refresh, Search } from '@element-plus/icons-vue'
 import api from '../api'
 
 const loading = ref(true)
@@ -10,16 +10,14 @@ const searchQuery = ref('')
 const detailDialog = ref(false)
 const detailLoading = ref(false)
 const selectedClient = ref(null)
+const statusFilter = ref('all')
 
 const formatTime = (time) => {
   if (!time) return '-'
   try {
     const date = typeof time === 'number' ? new Date(time) : new Date(time)
     if (isNaN(date.getTime())) return time
-    return date.toLocaleString('zh-CN', { 
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    })
+    return date.toLocaleString('zh-CN')
   } catch {
     return time
   }
@@ -31,8 +29,7 @@ const fetchClients = async () => {
     const { data } = await api.getClients()
     clients.value = data.clients || []
   } catch (error) {
-    console.error('Failed to fetch clients:', error)
-    ElMessage.error('加载客户端列表失败')
+    ElMessage.error('加载失败')
   } finally {
     loading.value = false
   }
@@ -45,7 +42,7 @@ const showClientDetail = async (clientId) => {
     const { data } = await api.getClientDetail(clientId)
     selectedClient.value = data
   } catch (error) {
-    ElMessage.error('加载客户端详情失败')
+    ElMessage.error('加载详情失败')
     detailDialog.value = false
   } finally {
     detailLoading.value = false
@@ -54,329 +51,405 @@ const showClientDetail = async (clientId) => {
 
 const kickClient = async (clientId) => {
   try {
-    await ElMessageBox.confirm(
-      `确定要断开客户端 "${clientId}" 的连接吗？`,
-      '确认断开',
-      { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
-    )
+    await ElMessageBox.confirm(`断开 "${clientId}" ?`, '确认', { type: 'warning' })
     await api.kickClient(clientId)
-    ElMessage.success(`客户端 ${clientId} 已断开`)
+    ElMessage.success('已断开')
     detailDialog.value = false
     fetchClients()
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('断开失败')
-    }
+    if (error !== 'cancel') ElMessage.error('操作失败')
   }
 }
 
+const onlineCount = computed(() => clients.value.filter(c => c.online).length)
+const offlineCount = computed(() => clients.value.filter(c => !c.online).length)
+
 const filteredClients = computed(() => {
-  if (!searchQuery.value) return clients.value
-  return clients.value.filter(c => 
-    c.clientId?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    c.username?.toLowerCase().includes(searchQuery.value.toLowerCase())
-  )
+  let result = clients.value
+  if (statusFilter.value === 'online') result = result.filter(c => c.online)
+  else if (statusFilter.value === 'offline') result = result.filter(c => !c.online)
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    result = result.filter(c => c.clientId?.toLowerCase().includes(q))
+  }
+  return result
 })
 
 onMounted(fetchClients)
 </script>
 
 <template>
-  <div class="clients-page">
-    <!-- 顶部统计卡片 -->
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
-          <el-icon :size="24"><Connection /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ clients.length }}</div>
-          <div class="stat-label">在线客户端</div>
-        </div>
+  <div class="page">
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">客户端</h1>
+        <p class="page-subtitle">管理 MQTT 客户端连接</p>
       </div>
-      <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%)">
-          <el-icon :size="24"><User /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ clients.filter(c => c.subscriptionCount > 0).length }}</div>
-          <div class="stat-label">有订阅的客户端</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%)">
-          <el-icon :size="24"><Timer /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ clients.reduce((sum, c) => sum + (c.subscriptionCount || 0), 0) }}</div>
-          <div class="stat-label">总订阅数</div>
-        </div>
+      <button @click="fetchClients" class="icon-btn" :disabled="loading">
+        <el-icon :class="{ spin: loading }" :size="18"><Refresh /></el-icon>
+      </button>
+    </header>
+
+    <!-- Filter Pills -->
+    <div class="filter-bar">
+      <button :class="['filter-pill', { active: statusFilter === 'all' }]" @click="statusFilter = 'all'">
+        全部 <span class="count">{{ clients.length }}</span>
+      </button>
+      <button :class="['filter-pill', { active: statusFilter === 'online' }]" @click="statusFilter = 'online'">
+        <span class="dot online"></span>在线 <span class="count">{{ onlineCount }}</span>
+      </button>
+      <button :class="['filter-pill', { active: statusFilter === 'offline' }]" @click="statusFilter = 'offline'">
+        <span class="dot offline"></span>离线 <span class="count">{{ offlineCount }}</span>
+      </button>
+      
+      <div class="search-box">
+        <el-icon class="search-icon"><Search /></el-icon>
+        <input v-model="searchQuery" placeholder="搜索..." class="search-input" />
       </div>
     </div>
 
-    <!-- 客户端列表 -->
-    <el-card class="clients-card" shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <div class="header-title">
-            <span class="title-text">客户端列表</span>
-            <el-tag type="info" size="small" effect="dark">{{ filteredClients.length }} 个</el-tag>
-          </div>
-          <div class="header-actions">
-            <el-input
-              v-model="searchQuery"
-              placeholder="搜索 Client ID 或用户名..."
-              style="width: 240px"
-              clearable
-              :prefix-icon="'Search'"
-            />
-            <el-button type="primary" @click="fetchClients" :loading="loading" :icon="'Refresh'">
-              刷新
-            </el-button>
-          </div>
-        </div>
-      </template>
+    <!-- Table -->
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th width="50"></th>
+            <th>Client ID</th>
+            <th width="100">节点</th>
+            <th width="60">订阅</th>
+            <th width="160">连接时间</th>
+            <th width="80"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="c in filteredClients" :key="c.clientId" @click="showClientDetail(c.clientId)">
+            <td><span :class="['dot', c.online ? 'online' : 'offline']"></span></td>
+            <td><code>{{ c.clientId }}</code></td>
+            <td class="muted">{{ c.nodeId || 'local' }}</td>
+            <td class="center">{{ c.subscriptionCount || 0 }}</td>
+            <td class="muted small">{{ formatTime(c.connectedAt) }}</td>
+            <td>
+              <button v-if="c.online" @click.stop="kickClient(c.clientId)" class="pill-btn danger small">
+                断开
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div v-if="loading" class="loading">
+        <div class="spinner"></div>
+      </div>
+      <div v-else-if="filteredClients.length === 0" class="empty">
+        暂无客户端
+      </div>
+    </div>
 
-      <el-table 
-        :data="filteredClients" 
-        v-loading="loading" 
-        stripe 
-        @row-click="(row) => showClientDetail(row.clientId)"
-        :row-style="{ cursor: 'pointer' }"
-        :header-cell-style="{ background: '#f5f7fa', fontWeight: '600' }"
-      >
-        <el-table-column prop="clientId" label="Client ID" min-width="200">
-          <template #default="{ row }">
-            <span class="client-id">{{ row.clientId }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="username" label="用户名" min-width="100">
-          <template #default="{ row }">
-            <span v-if="row.username" class="username">{{ row.username }}</span>
-            <span v-else class="no-data">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="nodeId" label="节点" min-width="100">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain" type="info">{{ row.nodeId || 'local' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="subscriptionCount" label="订阅数" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.subscriptionCount > 0 ? 'success' : 'info'" size="small" effect="dark" round>
-              {{ row.subscriptionCount || 0 }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="connectedAt" label="连接时间" min-width="160">
-          <template #default="{ row }">
-            <span class="time-text">{{ formatTime(row.connectedAt) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button type="danger" size="small" plain @click.stop="kickClient(row.clientId)">
-              断开
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 客户端详情弹窗 -->
-    <el-dialog v-model="detailDialog" title="客户端详情" width="640" :close-on-click-modal="false">
-      <div v-loading="detailLoading" class="detail-content">
-        <el-descriptions v-if="selectedClient" :column="2" border class="client-desc">
-          <el-descriptions-item label="Client ID" :span="2">
-            <span class="client-id">{{ selectedClient.clientId }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="用户名">{{ selectedClient.username || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="节点">
-            <el-tag size="small" effect="plain">{{ selectedClient.nodeId || 'local' }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="Clean Session">
-            <el-tag :type="selectedClient.cleanSession ? 'info' : 'warning'" size="small">
-              {{ selectedClient.cleanSession ? '是' : '否' }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="Keep Alive">{{ selectedClient.keepAliveSeconds }}s</el-descriptions-item>
-          <el-descriptions-item label="连接时间" :span="2">
-            <span class="time-text">{{ formatTime(selectedClient.connectedAt) }}</span>
-          </el-descriptions-item>
-        </el-descriptions>
-        
-        <div class="subscriptions-section" v-if="selectedClient">
-          <div class="section-title">
-            <span>订阅列表</span>
-            <el-tag type="success" size="small" effect="dark" round>{{ selectedClient.subscriptionCount || 0 }}</el-tag>
+    <!-- Detail Dialog -->
+    <el-dialog v-model="detailDialog" title="客户端详情" width="500">
+      <div v-loading="detailLoading" class="detail">
+        <template v-if="selectedClient">
+          <div class="detail-status">
+            <span :class="['dot', selectedClient.online ? 'online' : 'offline']"></span>
+            {{ selectedClient.online ? '在线' : '离线' }}
           </div>
-          <el-table 
-            :data="selectedClient.subscriptions || []" 
-            size="small" 
-            max-height="220"
-            :header-cell-style="{ background: '#f5f7fa' }"
-          >
-            <el-table-column prop="topic" label="Topic">
-              <template #default="{ row }">
-                <code class="topic-code">{{ row.topic }}</code>
-              </template>
-            </el-table-column>
-            <el-table-column prop="qos" label="QoS" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.qos === 0 ? 'info' : row.qos === 1 ? 'success' : 'warning'" size="small" effect="dark">
-                  QoS {{ row.qos }}
-                </el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-empty v-if="!selectedClient.subscriptions?.length" description="暂无订阅" :image-size="60" />
-        </div>
+          
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>Client ID</label>
+              <code>{{ selectedClient.clientId }}</code>
+            </div>
+            <div class="detail-item">
+              <label>节点</label>
+              <span>{{ selectedClient.nodeId || 'local' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Clean Session</label>
+              <span>{{ selectedClient.cleanSession ? '是' : '否' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Keep Alive</label>
+              <span>{{ selectedClient.keepAliveSeconds }}s</span>
+            </div>
+          </div>
+          
+          <div class="subs">
+            <label>订阅 ({{ selectedClient.subscriptionCount || 0 }})</label>
+            <div v-if="selectedClient.subscriptions?.length" class="subs-list">
+              <div v-for="s in selectedClient.subscriptions" :key="s.topic" class="sub-item">
+                <code>{{ s.topic }}</code>
+                <span class="qos">QoS {{ s.qos }}</span>
+              </div>
+            </div>
+            <div v-else class="empty small">暂无订阅</div>
+          </div>
+        </template>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="detailDialog = false">关闭</el-button>
-          <el-button type="danger" @click="kickClient(selectedClient?.clientId)">断开连接</el-button>
-        </div>
+        <button @click="detailDialog = false" class="pill-btn secondary">关闭</button>
+        <button v-if="selectedClient?.online" @click="kickClient(selectedClient?.clientId)" class="pill-btn danger">
+          断开连接
+        </button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.clients-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.page {
+  max-width: 1000px;
 }
 
-/* 统计卡片行 */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-}
-
-.stat-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-}
-
-.stat-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #303133;
-}
-
-.stat-label {
-  font-size: 13px;
-  color: #909399;
-  margin-top: 4px;
-}
-
-/* 客户端列表卡片 */
-.clients-card {
-  border-radius: 12px;
-}
-
-.card-header {
+.page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: 32px;
 }
 
-.header-title {
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Filter Bar */
+.filter-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  margin-bottom: 24px;
 }
 
-.title-text {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--bg-page);
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
 }
 
-.header-actions {
+.filter-pill:hover {
+  background: var(--bg-hover);
+}
+
+.filter-pill.active {
+  background: var(--text-primary);
+  color: var(--bg-page);
+}
+
+.filter-pill .count {
+  opacity: 0.6;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.online {
+  background: var(--success);
+}
+
+.dot.offline {
+  background: var(--text-tertiary);
+}
+
+.search-box {
+  margin-left: auto;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
 }
 
-.client-id {
-  font-family: 'Monaco', 'Menlo', monospace;
+.search-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-tertiary);
+}
+
+.search-input {
+  width: 200px;
+  padding: 10px 14px 10px 40px;
+  background: var(--bg-page);
+  border: none;
+  border-radius: var(--radius-pill);
   font-size: 13px;
-  color: #409eff;
+  color: var(--text-primary);
+  outline: none;
 }
 
-.username {
-  color: #303133;
+.search-input::placeholder {
+  color: var(--text-tertiary);
 }
 
-.no-data {
-  color: #c0c4cc;
-}
-
-.time-text {
-  color: #606266;
-  font-size: 13px;
-}
-
-/* 详情弹窗 */
-.detail-content {
+/* Table */
+.table-container {
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
   min-height: 200px;
 }
 
-.client-desc {
-  margin-bottom: 0;
+.table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.subscriptions-section {
-  margin-top: 24px;
+.table th {
+  padding: 16px 20px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.section-title {
+.table td {
+  padding: 16px 20px;
+  font-size: 13px;
+  border-top: 1px solid var(--border-default);
+}
+
+.table tr {
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.table code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.muted { color: var(--text-secondary); }
+.small { font-size: 12px; }
+.center { text-align: center; }
+
+.loading, .empty {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
+  justify-content: center;
+  padding: 60px;
+  color: var(--text-tertiary);
 }
 
-.topic-code {
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
-  background: #f5f7fa;
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #606266;
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
-.dialog-footer {
+/* Detail */
+.detail {
+  min-height: 150px;
+}
+
+.detail-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.detail-item {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-item label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+
+.detail-item code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.subs {
+  border-top: 1px solid var(--border-default);
+  padding-top: 20px;
+}
+
+.subs label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.subs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sub-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+}
+
+.sub-item code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.qos {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warning);
 }
 </style>

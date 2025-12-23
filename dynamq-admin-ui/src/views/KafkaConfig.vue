@@ -5,7 +5,7 @@
       <el-col :span="8">
         <el-card class="status-card">
           <template #header>
-            <span>⚡ 连接状态</span>
+            <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Connection /></el-icon>连接状态</span>
           </template>
           <div class="status-content" v-loading="loadingStatus">
             <div class="status-item">
@@ -33,7 +33,7 @@
       <el-col :span="16">
         <el-card>
           <template #header>
-            <span>⚙️ Kafka 配置</span>
+            <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Setting /></el-icon>Kafka 配置</span>
           </template>
           <div v-loading="loadingConfig">
             <el-descriptions :column="2" border>
@@ -82,7 +82,7 @@
     <el-card style="margin-top: 20px">
       <template #header>
         <div class="card-header">
-          <span>📊 路由统计</span>
+          <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><DataLine /></el-icon>路由统计</span>
           <el-button type="primary" link @click="$router.push('/routes')">
             管理路由 →
           </el-button>
@@ -117,6 +117,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Connection, Setting, DataLine } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'

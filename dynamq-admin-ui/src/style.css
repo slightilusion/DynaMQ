@@ -1,79 +1,238 @@
+/* ==============================
+   DynaMQ - Google Antigravity Style
+   Pure Black/White, Pill Buttons, Floating Islands
+   ============================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  /* Light Mode - Pure White */
+  --bg-page: #ffffff;
+  --bg-surface: #f8f9fa;
+  --bg-hover: #f1f3f4;
+  --bg-active: #e8eaed;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  --text-primary: #000000;
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-tertiary: rgba(0, 0, 0, 0.4);
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --border-default: rgba(0, 0, 0, 0.08);
+
+  --accent: #1a73e8;
+  --accent-hover: #1557b0;
+  --success: #34a853;
+  --warning: #fbbc04;
+  --danger: #ea4335;
+
+  --shadow-float: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 100px;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', 'Consolas', monospace;
+
+  --transition: 200ms ease;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+/* Dark Mode - Pure Black */
+.dark {
+  --bg-page: #000000;
+  --bg-surface: #1a1a1a;
+  --bg-hover: #2a2a2a;
+  --bg-active: #3a3a3a;
+
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-tertiary: rgba(255, 255, 255, 0.4);
+
+  --border-default: rgba(255, 255, 255, 0.1);
+
+  --shadow-float: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-body {
+/* Reset */
+*,
+*::before,
+*::after {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+html {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-.card {
-  padding: 2em;
-}
-
+html,
+body,
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  height: 100%;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  transition: background var(--transition), color var(--transition);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+::selection {
+  background: rgba(26, 115, 232, 0.3);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: var(--radius-pill);
+}
+
+/* Element Plus Overrides */
+.dark .el-card {
+  background: var(--bg-surface);
+  border: none;
+}
+
+.dark .el-dialog {
+  background: var(--bg-surface);
+  border: none;
+  border-radius: var(--radius-xl);
+}
+
+.dark .el-input__wrapper {
+  background: var(--bg-surface);
+  box-shadow: none !important;
+  border: none;
+}
+
+.dark .el-input__inner {
+  color: var(--text-primary);
+}
+
+.dark .el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-row-hover-bg-color: var(--bg-hover);
+  --el-table-text-color: var(--text-primary);
+  --el-table-header-text-color: var(--text-secondary);
+  --el-table-border-color: transparent;
+}
+
+.dark .el-descriptions__label {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.dark .el-descriptions__content {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+/* Status Dots with Glow */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.online {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(52, 168, 83, 0.2);
+}
+
+.status-dot.offline {
+  background: var(--text-tertiary);
+}
+
+/* Pill Badge */
+.pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pill-badge.success {
+  background: rgba(52, 168, 83, 0.1);
+  color: var(--success);
+}
+
+/* Floating Card */
+.floating-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  box-shadow: var(--shadow-float);
+}
+
+/* Pill Button */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--text-primary);
+  color: var(--bg-page);
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.pill-btn:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.pill-btn.secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.pill-btn.danger {
+  background: var(--danger);
+  color: white;
+}
+
+.pill-btn.small {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+/* Icon Button */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--bg-surface);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
 }

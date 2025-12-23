@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>📤 数据路由配置</span>
+          <span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Share /></el-icon>数据路由配置</span>
           <el-button type="primary" @click="showAddDialog">
             <el-icon><Plus /></el-icon> 添加路由
           </el-button>
@@ -88,7 +88,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Share } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'

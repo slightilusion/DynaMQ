@@ -123,6 +123,9 @@ public class AdminController {
      * Returns list of connected clients
      */
     public void getClients(RoutingContext ctx) {
+        // Check if onlineOnly filter is requested
+        boolean onlineOnly = "true".equalsIgnoreCase(ctx.request().getParam("onlineOnly"));
+
         // Get all session keys
         redis.keys(SESSION_KEY_PREFIX + "*")
                 .onSuccess(keys -> {
@@ -143,7 +146,12 @@ public class AdminController {
                                 JsonArray clients = new JsonArray();
                                 for (Future<JsonObject> f : clientFutures) {
                                     if (f.result() != null) {
-                                        clients.add(f.result());
+                                        JsonObject client = f.result();
+                                        // If onlineOnly filter is active, skip offline clients
+                                        if (onlineOnly && !client.getBoolean("online", false)) {
+                                            continue;
+                                        }
+                                        clients.add(client);
                                     }
                                 }
                                 sendJson(ctx, new JsonObject().put("clients", clients));
@@ -705,17 +713,25 @@ public class AdminController {
                 .map(response -> response != null ? response.toLong() : 0L);
     }
 
+    private static final String CONNECTION_KEY_PREFIX = "dynamq:connection:";
+
     private Future<JsonObject> getClientInfo(String clientId) {
         Future<io.vertx.redis.client.Response> sessionFuture = redis.get(SESSION_KEY_PREFIX + clientId);
         Future<io.vertx.redis.client.Response> subsFuture = redis.get(SUBSCRIPTION_KEY_PREFIX + clientId);
+        Future<io.vertx.redis.client.Response> connectionFuture = redis
+                .exists(java.util.List.of(CONNECTION_KEY_PREFIX + clientId));
 
-        return Future.all(sessionFuture, subsFuture)
+        return Future.all(sessionFuture, subsFuture, connectionFuture)
                 .map(cf -> {
                     io.vertx.redis.client.Response sessionResponse = sessionFuture.result();
                     io.vertx.redis.client.Response subsResponse = subsFuture.result();
+                    io.vertx.redis.client.Response connectionResponse = connectionFuture.result();
 
                     if (sessionResponse == null)
                         return null;
+
+                    // Check if client is online (connection key exists)
+                    boolean isOnline = connectionResponse != null && connectionResponse.toInteger() > 0;
 
                     // Count subscriptions
                     int subscriptionCount = 0;
@@ -740,9 +756,11 @@ public class AdminController {
                                 .put("connectedAt", parseConnectedAt(session))
                                 .put("nodeId", session.getString("nodeId", ""))
                                 .put("cleanSession", session.getBoolean("cleanSession", true))
-                                .put("subscriptionCount", subscriptionCount);
+                                .put("subscriptionCount", subscriptionCount)
+                                .put("online", isOnline);
                     } catch (Exception e) {
-                        return new JsonObject().put("clientId", clientId).put("subscriptionCount", 0);
+                        return new JsonObject().put("clientId", clientId).put("subscriptionCount", 0).put("online",
+                                false);
                     }
                 });
     }

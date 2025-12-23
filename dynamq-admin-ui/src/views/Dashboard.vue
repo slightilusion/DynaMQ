@@ -1,5 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { Refresh, Monitor, Share, DataLine, Key } from '@element-plus/icons-vue'
 import api from '../api'
 
 const loading = ref(true)
@@ -9,6 +10,8 @@ const dashboard = ref({
   timestamp: '',
   version: ''
 })
+
+let refreshInterval = null
 
 const fetchDashboard = async () => {
   try {
@@ -24,129 +27,199 @@ const fetchDashboard = async () => {
 
 onMounted(() => {
   fetchDashboard()
-  // Auto refresh every 5 seconds
-  setInterval(fetchDashboard, 5000)
+  refreshInterval = setInterval(fetchDashboard, 5000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) clearInterval(refreshInterval)
 })
 </script>
 
 <template>
   <div class="dashboard">
-    <el-row :gutter="20">
-      <el-col :span="6">
-        <el-card class="stat-card clients">
-          <div class="stat-icon">
-            <el-icon size="40"><Monitor /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ dashboard.connectedClients }}</div>
-            <div class="stat-label">Connected Clients</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card nodes">
-          <div class="stat-icon">
-            <el-icon size="40"><Promotion /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ dashboard.activeNodes }}</div>
-            <div class="stat-label">Active Nodes</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card version">
-          <div class="stat-icon">
-            <el-icon size="40"><InfoFilled /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ dashboard.version || 'N/A' }}</div>
-            <div class="stat-label">Version</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card time">
-          <div class="stat-icon">
-            <el-icon size="40"><Clock /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value small">{{ dashboard.timestamp?.split('T')[1]?.split('.')[0] || '--' }}</div>
-            <div class="stat-label">Last Updated</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">仪表盘</h1>
+        <p class="page-subtitle">DynaMQ MQTT Broker 概览</p>
+      </div>
+      <button @click="fetchDashboard" class="pill-btn secondary small" :disabled="loading">
+        <el-icon :class="{ spin: loading }"><Refresh /></el-icon>
+        刷新
+      </button>
+    </header>
 
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="24">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>System Information</span>
-              <el-button type="primary" @click="fetchDashboard" :loading="loading">
-                Refresh
-              </el-button>
-            </div>
-          </template>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="MQTT Broker">DynaMQ</el-descriptions-item>
-            <el-descriptions-item label="Version">{{ dashboard.version }}</el-descriptions-item>
-            <el-descriptions-item label="Active Connections">{{ dashboard.connectedClients }}</el-descriptions-item>
-            <el-descriptions-item label="Cluster Nodes">{{ dashboard.activeNodes }}</el-descriptions-item>
-            <el-descriptions-item label="Status">
-              <el-tag type="success">Running</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="Last Heartbeat">{{ dashboard.timestamp }}</el-descriptions-item>
-          </el-descriptions>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="metrics">
+      <div class="metric-card">
+        <span class="metric-value">{{ dashboard.connectedClients }}</span>
+        <span class="metric-label">在线客户端</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-value">{{ dashboard.activeNodes }}</span>
+        <span class="metric-label">活跃节点</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-value">{{ dashboard.version || '-' }}</span>
+        <span class="metric-label">版本</span>
+      </div>
+      <div class="metric-card">
+        <span class="pill-badge success">
+          <span class="status-dot online"></span>
+          运行中
+        </span>
+        <span class="metric-label">系统状态</span>
+      </div>
+    </div>
+
+    <section class="section">
+      <h2 class="section-title">快速导航</h2>
+      <div class="quick-nav">
+        <router-link to="/clients" class="quick-item">
+          <div class="quick-icon"><el-icon :size="24"><Monitor /></el-icon></div>
+          <span>客户端管理</span>
+        </router-link>
+        <router-link to="/routes" class="quick-item">
+          <div class="quick-icon"><el-icon :size="24"><Share /></el-icon></div>
+          <span>数据路由</span>
+        </router-link>
+        <router-link to="/monitoring" class="quick-item">
+          <div class="quick-icon"><el-icon :size="24"><DataLine /></el-icon></div>
+          <span>实时监控</span>
+        </router-link>
+        <router-link to="/acl" class="quick-item">
+          <div class="quick-icon"><el-icon :size="24"><Key /></el-icon></div>
+          <span>访问控制</span>
+        </router-link>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .dashboard {
-  padding: 10px;
+  max-width: 900px;
 }
 
-.stat-card {
-  display: flex;
-  align-items: center;
-  padding: 20px;
-}
-
-.stat-icon {
-  margin-right: 20px;
-  color: #fff;
-  padding: 15px;
-  border-radius: 8px;
-}
-
-.clients .stat-icon { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.nodes .stat-icon { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-.version .stat-icon { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-.time .stat-icon { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-
-.stat-value {
-  font-size: 28px;
-  font-weight: bold;
-  color: #303133;
-}
-
-.stat-value.small {
-  font-size: 20px;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-  margin-top: 5px;
-}
-
-.card-header {
+.page-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 40px;
+}
+
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Metrics */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.metric-card {
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-value {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.metric-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Section */
+.section {
+  margin-bottom: 32px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+
+/* Quick Nav */
+.quick-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.quick-item {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 12px;
+  padding: 32px 20px;
+  background: var(--bg-page);
+  border-radius: var(--radius-xl);
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: all var(--transition);
+}
+
+.quick-item:hover {
+  background: var(--bg-hover);
+  transform: translateY(-2px);
+}
+
+.quick-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  transition: all var(--transition);
+}
+
+.quick-item:hover .quick-icon {
+  background: var(--text-primary);
+  color: var(--bg-page);
+}
+
+.quick-item span:last-child {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .metrics, .quick-nav {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>
