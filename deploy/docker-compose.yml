@@ -7,15 +7,17 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: dynamq-1
+    hostname: dynamq-1
     environment:
-      - NODE_NAME=dynamq-1
-      - MQTT_PORT=1883
-      - ADMIN_PORT=8080
-    ports:
-      - "1883:1883"
-      - "8080:8080"
+      - HOSTNAME=dynamq-1
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
     networks:
       - dynamq-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # DynaMQ Broker Node 2
   dynamq-2:
@@ -23,15 +25,19 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: dynamq-2
+    hostname: dynamq-2
     environment:
-      - NODE_NAME=dynamq-2
-      - MQTT_PORT=1883
-      - ADMIN_PORT=8080
-    ports:
-      - "1884:1883"
-      - "8081:8080"
+      - HOSTNAME=dynamq-2
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
     networks:
       - dynamq-network
+    depends_on:
+      - dynamq-1
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # DynaMQ Broker Node 3
   dynamq-3:
@@ -39,38 +45,42 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: dynamq-3
+    hostname: dynamq-3
     environment:
-      - NODE_NAME=dynamq-3
-      - MQTT_PORT=1883
-      - ADMIN_PORT=8080
-    ports:
-      - "1885:1883"
-      - "8082:8080"
+      - HOSTNAME=dynamq-3
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
     networks:
       - dynamq-network
+    depends_on:
+      - dynamq-1
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Admin UI
+  # Admin UI (Single instance)
   admin-ui:
     build:
       context: ../dynamq-admin-ui
       dockerfile: ../deploy/Dockerfile.admin-ui
     container_name: dynamq-admin-ui
     environment:
-      - VITE_API_BASE=http://yelc.eu.org:8080
+      - VITE_API_BASE=http://localhost:8000
     ports:
       - "3000:80"
     depends_on:
-      - dynamq-1
+      - nginx
     networks:
       - dynamq-network
 
-  # Nginx Load Balancer (optional)
+  # Nginx Load Balancer
   nginx:
     image: nginx:alpine
     container_name: dynamq-nginx
     ports:
-      - "1880:1883"   # MQTT
-      - "8000:8080"   # Admin API
+      - "1880:1883"   # MQTT (external:internal)
+      - "8000:8080"   # Admin API (external:internal)
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -79,6 +89,7 @@ services:
       - dynamq-3
     networks:
       - dynamq-network
+    restart: unless-stopped
 
 networks:
   dynamq-network:

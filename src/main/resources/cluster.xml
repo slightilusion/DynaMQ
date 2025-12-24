@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hazelcast xmlns="http://www.hazelcast.com/schema/config"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://www.hazelcast.com/schema/config
+           http://www.hazelcast.com/schema/config/hazelcast-config-5.3.xsd">
+
+    <cluster-name>dynamq-cluster</cluster-name>
+
+    <network>
+        <port auto-increment="true" port-count="100">5701</port>
+        <join>
+            <!-- Disable multicast, use TCP/IP for Docker -->
+            <multicast enabled="false"/>
+            <tcp-ip enabled="true">
+                <!-- Docker container names for discovery -->
+                <member>dynamq-1</member>
+                <member>dynamq-2</member>
+                <member>dynamq-3</member>
+            </tcp-ip>
+        </join>
+    </network>
+
+    <!-- Partition group for better data distribution -->
+    <partition-group enabled="false"/>
+
+    <!-- CP Subsystem disabled for better performance -->
+    <cp-subsystem>
+        <cp-member-count>0</cp-member-count>
+    </cp-subsystem>
+
+</hazelcast>

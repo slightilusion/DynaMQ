@@ -28,7 +28,7 @@ dynamq:
     provider: simple
     
   cluster:
-    enabled: false
+    enabled: true
     type: hazelcast
     node-name: ${HOSTNAME:node-1}
     
