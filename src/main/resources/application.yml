@@ -44,7 +44,7 @@ dynamq:
     
   redis:
     enabled: true
-    connection-string: ${REDIS_URL:redis://:cqmygysdss@host.docker.internal:6379}
+    connection-string: redis://:cqmygysdss@host.docker.internal:6379
     max-pool-size: 32
     max-waiting-handlers: 64
     password: 
