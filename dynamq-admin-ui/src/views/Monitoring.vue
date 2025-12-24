@@ -123,7 +123,7 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 
 use([CanvasRenderer, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent])
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const metrics = ref({})
 const health = ref({ components: {} })

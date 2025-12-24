@@ -120,7 +120,7 @@ import { ElMessage } from 'element-plus'
 import { Connection, Setting, Refresh, InfoFilled } from '@element-plus/icons-vue'
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const config = ref({
   enabled: false,

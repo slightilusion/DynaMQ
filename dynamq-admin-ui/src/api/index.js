@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 const API_KEY = import.meta.env.VITE_API_KEY || 'dynamq-admin-secret-key'
 
 const api = axios.create({
