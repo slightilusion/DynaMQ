@@ -8,6 +8,8 @@ import io.vertx.kafka.client.producer.KafkaProducer;
 import io.vertx.kafka.client.producer.KafkaProducerRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
+import org.dynabot.routing.DataRoute;
+import org.dynabot.routing.RouteManager;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -15,7 +17,8 @@ import java.util.Map;
 
 /**
  * Kafka publisher for forwarding MQTT messages to Kafka topics.
- * Messages are published with the MQTT topic as key for partitioning.
+ * Uses RouteManager to determine which messages should be forwarded and to
+ * which Kafka topics.
  */
 @Slf4j
 public class KafkaPublisher {
@@ -24,11 +27,17 @@ public class KafkaPublisher {
     private final AppConfig config;
     private final KafkaProducer<String, String> producer;
     private final String topicPrefix;
+    private final RouteManager routeManager;
 
     public KafkaPublisher(Vertx vertx, AppConfig config) {
+        this(vertx, config, null);
+    }
+
+    public KafkaPublisher(Vertx vertx, AppConfig config, RouteManager routeManager) {
         this.vertx = vertx;
         this.config = config;
         this.topicPrefix = config.getKafkaTopicPrefix();
+        this.routeManager = routeManager;
 
         // Create Kafka producer configuration
         Map<String, String> producerConfig = new HashMap<>();
@@ -42,12 +51,12 @@ public class KafkaPublisher {
 
         this.producer = KafkaProducer.create(vertx, producerConfig);
 
-        log.info("Kafka publisher initialized: bootstrap={}, topicPrefix={}",
-                config.getKafkaBootstrapServers(), topicPrefix);
+        log.info("Kafka publisher initialized: bootstrap={}, topicPrefix={}, routeManager={}",
+                config.getKafkaBootstrapServers(), topicPrefix, routeManager != null ? "enabled" : "disabled");
     }
 
     /**
-     * Publish an MQTT message to Kafka
+     * Publish an MQTT message to Kafka if a matching route is found
      * 
      * @param clientId  Source client ID
      * @param mqttTopic MQTT topic
@@ -55,8 +64,23 @@ public class KafkaPublisher {
      * @return Future completing when publish is done
      */
     public Future<Void> publish(String clientId, String mqttTopic, Buffer payload) {
-        // Determine Kafka topic based on MQTT topic
-        String kafkaTopic = getKafkaTopic(mqttTopic);
+        // Check if there's a matching route
+        DataRoute route = null;
+        if (routeManager != null) {
+            route = routeManager.findMatchingRoute(mqttTopic);
+            if (route == null) {
+                // No matching route - do not forward to Kafka
+                log.trace("No matching route for topic: {}, skipping Kafka", mqttTopic);
+                return Future.succeededFuture();
+            }
+            if (!route.isEnabled()) {
+                log.trace("Route disabled for topic: {}, skipping Kafka", mqttTopic);
+                return Future.succeededFuture();
+            }
+        }
+
+        // Determine Kafka topic
+        String kafkaTopic = route != null ? route.getKafkaTopic() : getDefaultKafkaTopic(mqttTopic);
 
         // Create message envelope
         JsonObject envelope = new JsonObject()
@@ -75,7 +99,7 @@ public class KafkaPublisher {
         return producer.send(record)
                 .onSuccess(metadata -> {
                     org.dynabot.metrics.MetricsVerticle.incrementKafkaSuccess();
-                    log.trace("Published to Kafka: topic={}, partition={}, offset={}",
+                    log.debug("Published to Kafka: topic={}, partition={}, offset={}",
                             kafkaTopic, metadata.getPartition(), metadata.getOffset());
                 })
                 .onFailure(err -> {
@@ -87,10 +111,10 @@ public class KafkaPublisher {
     }
 
     /**
-     * Map MQTT topic to Kafka topic
-     * Default strategy: replace / with . and prepend prefix
+     * Default Kafka topic mapping when no RouteManager is provided
+     * This is used for backward compatibility
      */
-    private String getKafkaTopic(String mqttTopic) {
+    private String getDefaultKafkaTopic(String mqttTopic) {
         // Extract top-level category from MQTT topic
         // e.g., "devices/sensor1/telemetry" -> "dynamq.telemetry"
         String[] parts = mqttTopic.split("/");

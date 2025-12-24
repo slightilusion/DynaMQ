@@ -256,9 +256,15 @@ public class MqttBrokerVerticle extends AbstractVerticle {
     }
 
     private void initializeHandlers() {
+        // Initialize route manager for Kafka routing
+        org.dynabot.routing.RouteManager routeManager = null;
+        if (appConfig.isRedisEnabled() && appConfig.isKafkaEnabled()) {
+            routeManager = new org.dynabot.routing.RouteManager(vertx, appConfig);
+        }
+
         connectHandler = new ConnectHandler(vertx, sessionManager, subscriptionManager, appConfig, authProvider);
         publishHandler = new PublishHandler(vertx, sessionManager, subscriptionManager, appConfig, retainMessageStore,
-                clusterRouter, aclProvider);
+                clusterRouter, aclProvider, routeManager);
         subscribeHandler = new SubscribeHandler(vertx, sessionManager, subscriptionManager, retainMessageStore,
                 aclProvider);
         disconnectHandler = new DisconnectHandler(vertx, sessionManager, subscriptionManager);

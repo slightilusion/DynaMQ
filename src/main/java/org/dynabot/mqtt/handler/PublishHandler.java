@@ -16,6 +16,8 @@ import org.dynabot.session.ClientSession;
 import org.dynabot.session.SessionManager;
 import org.dynabot.subscription.SubscriptionManager;
 
+import org.dynabot.routing.RouteManager;
+
 import java.util.Map;
 
 /**
@@ -38,7 +40,7 @@ public class PublishHandler {
     public PublishHandler(Vertx vertx, SessionManager sessionManager,
             SubscriptionManager subscriptionManager, AppConfig config,
             RetainMessageStore retainMessageStore, ClusterMessageRouter clusterRouter,
-            AclProvider aclProvider) {
+            AclProvider aclProvider, RouteManager routeManager) {
         this.vertx = vertx;
         this.sessionManager = sessionManager;
         this.subscriptionManager = subscriptionManager;
@@ -49,7 +51,7 @@ public class PublishHandler {
 
         // Initialize Kafka publisher if enabled
         if (config.isKafkaEnabled()) {
-            this.kafkaPublisher = new KafkaPublisher(vertx, config);
+            this.kafkaPublisher = new KafkaPublisher(vertx, config, routeManager);
         } else {
             this.kafkaPublisher = null;
         }
