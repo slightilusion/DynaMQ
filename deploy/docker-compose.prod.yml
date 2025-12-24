@@ -1,0 +1,74 @@
+version: '3.8'
+
+# Portainer GitHub 部署版本 - 使用 GitHub Container Registry 镜像
+
+services:
+  # DynaMQ Broker Node 1
+  dynamq-1:
+    image: ghcr.io/slightilusion/dynamq:latest
+    hostname: dynamq-1
+    environment:
+      - HOSTNAME=dynamq-1
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+    networks:
+      - dynamq-network
+
+  # DynaMQ Broker Node 2
+  dynamq-2:
+    image: ghcr.io/slightilusion/dynamq:latest
+    hostname: dynamq-2
+    environment:
+      - HOSTNAME=dynamq-2
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+    networks:
+      - dynamq-network
+    depends_on:
+      - dynamq-1
+
+  # DynaMQ Broker Node 3
+  dynamq-3:
+    image: ghcr.io/slightilusion/dynamq:latest
+    hostname: dynamq-3
+    environment:
+      - HOSTNAME=dynamq-3
+      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+    networks:
+      - dynamq-network
+    depends_on:
+      - dynamq-1
+
+  # Admin UI
+  admin-ui:
+    image: ghcr.io/slightilusion/dynamq-admin-ui:latest
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - nginx
+    networks:
+      - dynamq-network
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "1880:1883"
+      - "8000:8080"
+    configs:
+      - source: nginx_config
+        target: /etc/nginx/nginx.conf
+    depends_on:
+      - dynamq-1
+      - dynamq-2
+      - dynamq-3
+    networks:
+      - dynamq-network
+
+configs:
+  nginx_config:
+    file: ./nginx.conf
+
+networks:
+  dynamq-network:
+    driver: bridge
