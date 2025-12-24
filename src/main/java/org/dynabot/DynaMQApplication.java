@@ -11,9 +11,11 @@ import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.micrometer.VertxPrometheusOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.dynabot.admin.AdminApiVerticle;
+import org.dynabot.cluster.NodeHealthMonitor;
 import org.dynabot.config.AppConfig;
 import org.dynabot.metrics.MetricsVerticle;
 import org.dynabot.mqtt.MqttBrokerVerticle;
+import org.dynabot.session.SessionManager;
 
 /**
  * DynaMQ Application Entry Point.
@@ -24,6 +26,7 @@ public class DynaMQApplication {
 
     private static Vertx vertx;
     private static AppConfig appConfig;
+    private static NodeHealthMonitor nodeHealthMonitor;
 
     public static void main(String[] args) {
         log.info("Starting DynaMQ MQTT Broker...");
@@ -55,6 +58,11 @@ public class DynaMQApplication {
                 try {
                     // Give time for pending operations to complete
                     long shutdownTimeout = 10000; // 10 seconds
+
+                    // Stop NodeHealthMonitor first
+                    if (nodeHealthMonitor != null) {
+                        nodeHealthMonitor.stop();
+                    }
 
                     vertx.close()
                             .toCompletionStage()
@@ -129,7 +137,16 @@ public class DynaMQApplication {
         metricsFuture
                 .compose(v -> deployMqttBrokerVerticles())
                 .compose(v -> deployAdminApiVerticle())
-                .onSuccess(v -> logStartupComplete())
+                .onSuccess(v -> {
+                    // Start NodeHealthMonitor for cluster node registration
+                    if (appConfig.isClusterEnabled() && appConfig.isRedisEnabled()) {
+                        SessionManager sessionManager = SessionManager.create(vertx, appConfig);
+                        nodeHealthMonitor = new NodeHealthMonitor(vertx, appConfig, sessionManager);
+                        nodeHealthMonitor.start();
+                        log.info("NodeHealthMonitor started for cluster node registration");
+                    }
+                    logStartupComplete();
+                })
                 .onFailure(DynaMQApplication::handleDeploymentFailure);
     }
 
