@@ -3,9 +3,7 @@ package org.dynabot.routing;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.Json;
-import io.vertx.redis.client.Redis;
-import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.RedisOptions;
+import io.vertx.redis.client.*;
 import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
 
@@ -16,14 +14,17 @@ import java.util.stream.Collectors;
 /**
  * Manages data routing rules for MQTT to Kafka forwarding.
  * Routes are stored in Redis for persistence and cluster sharing.
+ * Uses Redis PubSub for cross-node cache synchronization.
  */
 @Slf4j
 public class RouteManager {
 
     private static final String ROUTES_KEY = "dynamq:routes";
+    private static final String ROUTES_SYNC_CHANNEL = "dynamq:routes:sync";
 
     private final Vertx vertx;
     private final AppConfig config;
+    private final String nodeId;
     private final ConcurrentHashMap<String, DataRoute> routeCache = new ConcurrentHashMap<>();
     private RedisAPI redisAPI;
     private boolean redisEnabled;
@@ -31,6 +32,7 @@ public class RouteManager {
     public RouteManager(Vertx vertx, AppConfig config) {
         this.vertx = vertx;
         this.config = config;
+        this.nodeId = config.getNodeName();
         this.redisEnabled = config.isRedisEnabled();
 
         if (redisEnabled) {
@@ -48,6 +50,77 @@ public class RouteManager {
 
         // Load routes from Redis on startup
         loadRoutes();
+
+        // Subscribe to route sync channel
+        subscribeToRouteSync();
+    }
+
+    /**
+     * Subscribe to route sync notifications from other nodes
+     */
+    private void subscribeToRouteSync() {
+        RedisOptions options = new RedisOptions()
+                .setConnectionString(config.getRedisConnectionString());
+
+        Redis.createClient(vertx, options).connect()
+                .onSuccess(conn -> {
+                    conn.handler(message -> {
+                        if (message != null && message.size() >= 3) {
+                            String type = message.get(0).toString();
+                            if ("message".equals(type)) {
+                                String payload = message.get(2).toString();
+                                handleSyncMessage(payload);
+                            }
+                        }
+                    });
+
+                    RedisAPI.api(conn).subscribe(List.of(ROUTES_SYNC_CHANNEL))
+                            .onSuccess(v -> log.info("Subscribed to route sync channel"))
+                            .onFailure(err -> log.error("Failed to subscribe to route sync", err));
+                })
+                .onFailure(err -> log.error("Failed to connect for route sync", err));
+    }
+
+    /**
+     * Handle route sync message from another node
+     */
+    private void handleSyncMessage(String payload) {
+        try {
+            io.vertx.core.json.JsonObject msg = new io.vertx.core.json.JsonObject(payload);
+            String sourceNode = msg.getString("sourceNode");
+
+            // Ignore messages from self
+            if (nodeId.equals(sourceNode)) {
+                return;
+            }
+
+            String action = msg.getString("action");
+            log.debug("Received route sync: action={}, from={}", action, sourceNode);
+
+            // Reload routes from Redis to get the latest data
+            loadRoutes();
+        } catch (Exception e) {
+            log.warn("Failed to handle route sync message: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Publish route sync notification to other nodes
+     */
+    private void publishRouteSync(String action, String routeId) {
+        if (!redisEnabled || redisAPI == null) {
+            return;
+        }
+
+        io.vertx.core.json.JsonObject msg = new io.vertx.core.json.JsonObject()
+                .put("action", action)
+                .put("routeId", routeId)
+                .put("sourceNode", nodeId)
+                .put("timestamp", System.currentTimeMillis());
+
+        redisAPI.publish(ROUTES_SYNC_CHANNEL, msg.encode())
+                .onSuccess(v -> log.debug("Published route sync: action={}, routeId={}", action, routeId))
+                .onFailure(err -> log.error("Failed to publish route sync", err));
     }
 
     /**
@@ -106,7 +179,11 @@ public class RouteManager {
         if (redisEnabled && redisAPI != null) {
             String json = Json.encode(route);
             return redisAPI.hset(Arrays.asList(ROUTES_KEY, route.getId(), json))
-                    .map(r -> route)
+                    .map(r -> {
+                        // Notify other nodes
+                        publishRouteSync("save", route.getId());
+                        return route;
+                    })
                     .onFailure(err -> log.error("Failed to save route: {}", err.getMessage()));
         }
 
@@ -121,7 +198,11 @@ public class RouteManager {
 
         if (redisEnabled && redisAPI != null) {
             return redisAPI.hdel(Arrays.asList(ROUTES_KEY, id))
-                    .map(r -> removed != null)
+                    .map(r -> {
+                        // Notify other nodes
+                        publishRouteSync("delete", id);
+                        return removed != null;
+                    })
                     .onFailure(err -> log.error("Failed to delete route: {}", err.getMessage()));
         }
 
