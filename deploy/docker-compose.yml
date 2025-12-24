@@ -11,6 +11,8 @@ services:
     environment:
       - HOSTNAME=dynamq-1
       - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - dynamq-network
     healthcheck:
@@ -29,6 +31,8 @@ services:
     environment:
       - HOSTNAME=dynamq-2
       - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - dynamq-network
     depends_on:
@@ -49,6 +53,8 @@ services:
     environment:
       - HOSTNAME=dynamq-3
       - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - dynamq-network
     depends_on:
