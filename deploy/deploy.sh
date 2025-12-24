@@ -17,9 +17,9 @@ else
     cd DynaMQ
 fi
 
-# 2. 构建 JAR 包
+# 2. 构建 JAR 包 (使用支持 ARM64 的镜像)
 echo "Building JAR..."
-docker run --rm -v "$(pwd)":/app -w /app maven:3.9-eclipse-temurin-17-alpine mvn clean package -DskipTests
+docker run --rm -v "$(pwd)":/app -w /app maven:3.9-eclipse-temurin-17 mvn clean package -DskipTests
 
 # 3. 构建和启动容器
 echo "Building and starting containers..."

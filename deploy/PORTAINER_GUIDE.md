@@ -15,8 +15,8 @@ curl -sSL https://raw.githubusercontent.com/slightilusion/DynaMQ/master/deploy/d
 git clone https://github.com/slightilusion/DynaMQ.git
 cd DynaMQ
 
-# 使用 Docker 构建 JAR
-docker run --rm -v "$(pwd)":/app -w /app maven:3.9-eclipse-temurin-17-alpine mvn clean package -DskipTests
+# 使用 Docker 构建 JAR (支持 ARM64)
+docker run --rm -v "$(pwd)":/app -w /app maven:3.9-eclipse-temurin-17 mvn clean package -DskipTests
 
 # 启动集群
 cd deploy
