@@ -248,6 +248,13 @@ public class RedisSessionManager implements SessionManager {
                 .onSuccess(conn -> {
                     conn.handler(message -> {
                         if (message != null && message.size() >= 3) {
+                            String type = message.get(0).toString();
+
+                            // Only process actual messages, not subscription confirmations
+                            if (!"message".equals(type)) {
+                                return;
+                            }
+
                             String channel = message.get(1).toString();
                             String payload = message.get(2).toString();
 
@@ -267,7 +274,7 @@ public class RedisSessionManager implements SessionManager {
                                         localCache.remove(clientId);
                                     }
                                 } catch (Exception e) {
-                                    log.error("Failed to process kick command", e);
+                                    log.warn("Failed to process kick command: {}", e.getMessage());
                                 }
                             }
                         }
