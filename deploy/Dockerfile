@@ -10,8 +10,18 @@ COPY target/DynaMQ-1.0-SNAPSHOT.jar app.jar
 COPY src/main/resources/application.yml application.yml
 COPY src/main/resources/cluster.xml cluster.xml
 
-# Set environment variables
-ENV JAVA_OPTS="-Xms512m -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+# JVM optimization for high-concurrency MQTT (5GB per node)
+# ZGC: Ultra-low latency GC, ideal for IoT with millions of connections
+# Direct memory for Netty I/O buffers
+ENV JAVA_OPTS="-Xms4g -Xmx5g \
+    -XX:+UseZGC \
+    -XX:+ZGenerational \
+    -XX:MaxDirectMemorySize=1g \
+    -XX:+AlwaysPreTouch \
+    -XX:+UseStringDeduplication \
+    -XX:MaxGCPauseMillis=10 \
+    -Dio.netty.recycler.maxCapacityPerThread=0 \
+    -Dio.netty.leakDetection.level=disabled"
 
 EXPOSE 1883 8080
 
