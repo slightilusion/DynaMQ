@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.redis.client.Redis;
-import io.vertx.redis.client.RedisAPI;
-import io.vertx.redis.client.RedisOptions;
+import io.vertx.redis.client.*;
 import io.vertx.redis.client.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
@@ -20,23 +18,27 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Redis-based implementation of RetainMessageStore.
  * Stores retained messages in Redis for cluster-wide access.
+ * Uses Redis PubSub for cross-node cache invalidation.
  * Key format: dynamq:retain:{topic}
  */
 @Slf4j
 public class RedisRetainMessageStore implements RetainMessageStore {
 
     private static final String RETAIN_KEY_PREFIX = "dynamq:retain:";
+    private static final String RETAIN_SYNC_CHANNEL = "dynamq:retain:sync";
 
     private final Vertx vertx;
     private final RedisAPI redis;
     private final ObjectMapper objectMapper;
+    private final String nodeId;
 
-    // Local cache for faster reads
+    // Local cache for faster reads - high performance for million connections
     private final ConcurrentHashMap<String, RetainedMessage> localCache = new ConcurrentHashMap<>();
 
     public RedisRetainMessageStore(Vertx vertx, AppConfig config) {
         this.vertx = vertx;
         this.objectMapper = new ObjectMapper();
+        this.nodeId = config.getNodeName();
 
         RedisOptions options = new RedisOptions()
                 .setConnectionString(config.getRedisConnectionString())
@@ -46,7 +48,76 @@ public class RedisRetainMessageStore implements RetainMessageStore {
         Redis client = Redis.createClient(vertx, options);
         this.redis = RedisAPI.api(client);
 
-        log.info("Redis retain message store initialized");
+        // Subscribe to cache invalidation notifications
+        subscribeToCacheSync(config);
+
+        log.info("Redis retain message store initialized with cluster sync");
+    }
+
+    /**
+     * Subscribe to cache sync notifications from other nodes
+     */
+    private void subscribeToCacheSync(AppConfig config) {
+        RedisOptions options = new RedisOptions()
+                .setConnectionString(config.getRedisConnectionString());
+
+        Redis.createClient(vertx, options).connect()
+                .onSuccess(conn -> {
+                    conn.handler(message -> {
+                        if (message != null && message.size() >= 3) {
+                            String type = message.get(0).toString();
+                            if ("message".equals(type)) {
+                                handleSyncMessage(message.get(2).toString());
+                            }
+                        }
+                    });
+
+                    RedisAPI.api(conn).subscribe(List.of(RETAIN_SYNC_CHANNEL))
+                            .onSuccess(v -> log.info("Subscribed to retain message sync channel"))
+                            .onFailure(err -> log.error("Failed to subscribe to retain sync", err));
+                })
+                .onFailure(err -> log.error("Failed to connect for retain sync", err));
+    }
+
+    /**
+     * Handle cache sync message - invalidate local cache
+     */
+    private void handleSyncMessage(String payload) {
+        try {
+            io.vertx.core.json.JsonObject msg = new io.vertx.core.json.JsonObject(payload);
+            String sourceNode = msg.getString("sourceNode");
+
+            // Ignore messages from self
+            if (nodeId.equals(sourceNode)) {
+                return;
+            }
+
+            String action = msg.getString("action");
+            String topic = msg.getString("topic");
+
+            log.debug("Received retain sync: action={}, topic={}, from={}", action, topic, sourceNode);
+
+            // Invalidate local cache
+            if ("remove".equals(action) || "store".equals(action)) {
+                localCache.remove(topic);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to handle retain sync message: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Publish cache invalidation notification
+     */
+    private void publishCacheSync(String action, String topic) {
+        io.vertx.core.json.JsonObject msg = new io.vertx.core.json.JsonObject()
+                .put("action", action)
+                .put("topic", topic)
+                .put("sourceNode", nodeId)
+                .put("timestamp", System.currentTimeMillis());
+
+        redis.publish(RETAIN_SYNC_CHANNEL, msg.encode())
+                .onFailure(err -> log.error("Failed to publish retain sync", err));
     }
 
     @Override
@@ -69,6 +140,8 @@ public class RedisRetainMessageStore implements RetainMessageStore {
             return redis.set(List.of(key, json))
                     .onSuccess(v -> {
                         localCache.put(topic, message);
+                        // Notify other nodes to invalidate their cache
+                        publishCacheSync("store", topic);
                         log.debug("Stored retain message in Redis for topic: {}", topic);
                     })
                     .onFailure(err -> log.error("Failed to store retain message: {}", err.getMessage()))
@@ -81,7 +154,7 @@ public class RedisRetainMessageStore implements RetainMessageStore {
 
     @Override
     public Future<Optional<RetainedMessage>> get(String topic) {
-        // Check local cache first
+        // Check local cache first for high performance
         RetainedMessage cached = localCache.get(topic);
         if (cached != null) {
             return Future.succeededFuture(Optional.of(cached));
@@ -111,7 +184,11 @@ public class RedisRetainMessageStore implements RetainMessageStore {
         localCache.remove(topic);
 
         return redis.del(List.of(key))
-                .onSuccess(v -> log.debug("Removed retain message from Redis for topic: {}", topic))
+                .onSuccess(v -> {
+                    // Notify other nodes to invalidate their cache
+                    publishCacheSync("remove", topic);
+                    log.debug("Removed retain message from Redis for topic: {}", topic);
+                })
                 .onFailure(err -> log.error("Failed to remove retain message: {}", err.getMessage()))
                 .mapEmpty();
     }
