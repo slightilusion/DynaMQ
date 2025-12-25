@@ -51,10 +51,25 @@
       </el-col>
       <el-col :span="8">
         <el-card class="status-card">
-          <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Cpu /></el-icon>内存使用</span></template>
-          <div class="memory-info">
-            <el-progress type="dashboard" :percentage="metrics.memory?.usedPercent || 0" :color="getMemoryColor(metrics.memory?.usedPercent)" />
-            <div class="memory-text">{{ formatBytes(metrics.memory?.used) }} / {{ formatBytes(metrics.memory?.total) }}</div>
+          <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Cpu /></el-icon>节点内存使用</span></template>
+          <div class="nodes-memory" v-loading="loadingNodes">
+            <div class="node-memory-item" v-for="node in clusterNodes" :key="node.nodeId">
+              <div class="node-header">
+                <span class="node-name">{{ node.nodeId }}</span>
+                <el-tag :type="node.status === 'online' ? 'success' : 'danger'" size="small">{{ node.status }}</el-tag>
+              </div>
+              <el-progress 
+                v-if="node.memory" 
+                :percentage="node.memory.usedPercent || 0" 
+                :color="getMemoryColor(node.memory.usedPercent)"
+                :stroke-width="8"
+                :show-text="true"
+              />
+              <div class="memory-detail" v-if="node.memory">
+                {{ formatBytes(node.memory.used) }} / {{ formatBytes(node.memory.max) }}
+              </div>
+            </div>
+            <div v-if="clusterNodes.length === 0" class="no-nodes">暂无节点数据</div>
           </div>
         </el-card>
       </el-col>
@@ -127,7 +142,9 @@ const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const metrics = ref({})
 const health = ref({ components: {} })
+const clusterNodes = ref([])
 const loadingHealth = ref(false)
+const loadingNodes = ref(false)
 const connectionHistory = ref([])
 const MAX_HISTORY = 60
 let pollingInterval = null
@@ -153,6 +170,18 @@ const fetchHealth = async () => {
     ElMessage.error('获取健康状态失败')
   } finally {
     loadingHealth.value = false
+  }
+}
+
+const fetchClusterNodes = async () => {
+  loadingNodes.value = true
+  try {
+    const res = await axios.get(`${API_BASE}/api/admin/cluster/nodes`)
+    clusterNodes.value = res.data.nodes || []
+  } catch (err) {
+    console.error('Failed to fetch cluster nodes:', err)
+  } finally {
+    loadingNodes.value = false
   }
 }
 
@@ -208,7 +237,11 @@ const qosChartOption = computed(() => ({
 onMounted(() => {
   fetchMetrics()
   fetchHealth()
-  pollingInterval = setInterval(fetchMetrics, 3000)
+  fetchClusterNodes()
+  pollingInterval = setInterval(() => {
+    fetchMetrics()
+    fetchClusterNodes()
+  }, 3000)
 })
 
 onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
@@ -227,8 +260,12 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
   border-radius: 4px; 
   color: var(--text-primary);
 }
-.memory-info { display: flex; flex-direction: column; align-items: center; }
-.memory-text { margin-top: 6px; color: var(--text-secondary); font-size: 12px; }
+.nodes-memory { display: flex; flex-direction: column; gap: 12px; max-height: 150px; overflow-y: auto; }
+.node-memory-item { padding: 8px; background: var(--bg-hover); border-radius: 6px; }
+.node-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.node-name { font-weight: 500; font-size: 13px; color: var(--text-primary); }
+.memory-detail { font-size: 11px; color: var(--text-secondary); margin-top: 4px; text-align: right; }
+.no-nodes { text-align: center; color: var(--text-secondary); padding: 20px; }
 .kafka-stats { display: flex; flex-direction: column; gap: 10px; }
 .kafka-item { 
   display: flex; 

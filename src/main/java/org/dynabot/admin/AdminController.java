@@ -855,20 +855,37 @@ public class AdminController {
     }
 
     private Future<JsonObject> getNodeInfo(String nodeId) {
-        return redis.get(NODE_HEARTBEAT_KEY_PREFIX + nodeId)
-                .map(response -> {
+        Future<io.vertx.redis.client.Response> heartbeatFuture = redis.get(NODE_HEARTBEAT_KEY_PREFIX + nodeId);
+        Future<io.vertx.redis.client.Response> metricsFuture = redis.get("dynamq:node:metrics:" + nodeId);
+
+        return Future.all(heartbeatFuture, metricsFuture)
+                .map(cf -> {
+                    io.vertx.redis.client.Response heartbeatResponse = heartbeatFuture.result();
+                    io.vertx.redis.client.Response metricsResponse = metricsFuture.result();
+
                     JsonObject node = new JsonObject()
                             .put("nodeId", nodeId)
-                            .put("status", response != null ? "online" : "offline");
+                            .put("status", heartbeatResponse != null ? "online" : "offline");
 
-                    if (response != null) {
+                    if (heartbeatResponse != null) {
                         try {
-                            long timestamp = Long.parseLong(response.toString());
+                            long timestamp = Long.parseLong(heartbeatResponse.toString());
                             node.put("lastHeartbeat", Instant.ofEpochMilli(timestamp).toString());
                         } catch (Exception e) {
                             // ignore
                         }
                     }
+
+                    // Add memory metrics if available
+                    if (metricsResponse != null) {
+                        try {
+                            JsonObject metrics = new JsonObject(metricsResponse.toString());
+                            node.put("memory", metrics);
+                        } catch (Exception e) {
+                            // ignore
+                        }
+                    }
+
                     return node;
                 });
     }

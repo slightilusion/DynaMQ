@@ -121,15 +121,37 @@ public class NodeHealthMonitor {
     }
 
     /**
-     * Publish heartbeat to Redis
+     * Publish heartbeat to Redis along with memory metrics
      */
     private void publishHeartbeat() {
         String nodeKey = NODE_HEARTBEAT_KEY_PREFIX + nodeId;
         long timestamp = Instant.now().toEpochMilli();
 
+        // Collect memory metrics
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        long maxMemory = runtime.maxMemory();
+        int usedPercent = (int) (usedMemory * 100 / maxMemory);
+
+        // Store heartbeat timestamp
         redis.setex(nodeKey, String.valueOf(NODE_TIMEOUT_SECONDS), String.valueOf(timestamp))
                 .onSuccess(v -> log.trace("Heartbeat published for node: {}", nodeId))
                 .onFailure(err -> log.error("Failed to publish heartbeat", err));
+
+        // Store node metrics in Redis Hash
+        String metricsKey = "dynamq:node:metrics:" + nodeId;
+        io.vertx.core.json.JsonObject metrics = new io.vertx.core.json.JsonObject()
+                .put("used", usedMemory)
+                .put("total", totalMemory)
+                .put("max", maxMemory)
+                .put("free", freeMemory)
+                .put("usedPercent", usedPercent)
+                .put("timestamp", timestamp);
+
+        redis.setex(metricsKey, String.valueOf(NODE_TIMEOUT_SECONDS), metrics.encode())
+                .onFailure(err -> log.error("Failed to store node metrics", err));
     }
 
     /**
