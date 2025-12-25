@@ -15,10 +15,8 @@ COPY src/main/resources/cluster.xml cluster.xml
 # Direct memory for Netty I/O buffers
 ENV JAVA_OPTS="-Xms4g -Xmx5g \
     -XX:+UseZGC \
-    -XX:+ZGenerational \
     -XX:MaxDirectMemorySize=1g \
     -XX:+AlwaysPreTouch \
-    -XX:+UseStringDeduplication \
     -XX:MaxGCPauseMillis=10 \
     -Dio.netty.recycler.maxCapacityPerThread=0 \
     -Dio.netty.leakDetection.level=disabled"
