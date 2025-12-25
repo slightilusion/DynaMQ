@@ -11,7 +11,7 @@ COPY src/main/resources/application.yml application.yml
 COPY src/main/resources/cluster.xml cluster.xml
 
 # Set environment variables
-ENV JAVA_OPTS="-Xms256m -Xmx512m"
+ENV JAVA_OPTS="-Xms512m -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
 
 EXPOSE 1883 8080
 
