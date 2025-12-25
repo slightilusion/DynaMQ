@@ -69,16 +69,15 @@
             <span class="label">状态:</span>
             <el-tag :type="selectedNode.status === 'online' ? 'success' : 'danger'">{{ selectedNode.status }}</el-tag>
           </div>
-          <div class="detail-row" v-if="selectedNode.memory">
+          <div class="progress-row" v-if="selectedNode.memory">
             <span class="label">内存使用:</span>
-            <span>{{ selectedNode.memory.usedPercent }}%</span>
-          </div>
-          <div class="detail-row" v-if="selectedNode.memory">
-            <el-progress 
-              :percentage="selectedNode.memory.usedPercent || 0" 
-              :color="getMemoryColor(selectedNode.memory.usedPercent)"
-              :stroke-width="12"
-            />
+            <div class="progress-wrapper">
+              <el-progress 
+                :percentage="selectedNode.memory.usedPercent || 0" 
+                :color="getMemoryColor(selectedNode.memory.usedPercent)"
+                :stroke-width="16"
+              />
+            </div>
           </div>
           <div class="detail-row" v-if="selectedNode.memory">
             <span class="label">已用:</span>
@@ -313,6 +312,9 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 .node-detail-dialog { display: flex; flex-direction: column; gap: 16px; }
 .detail-row { display: flex; justify-content: space-between; align-items: center; }
 .detail-row .label { color: var(--text-secondary); font-weight: 500; }
+.progress-row { display: flex; flex-direction: column; gap: 8px; }
+.progress-row .label { color: var(--text-secondary); font-weight: 500; }
+.progress-wrapper { width: 100%; }
 .kafka-stats { display: flex; flex-direction: column; gap: 10px; }
 .kafka-item { 
   display: flex; 
