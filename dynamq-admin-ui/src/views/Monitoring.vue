@@ -250,7 +250,7 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
 <style scoped>
 .monitoring { padding: 16px; }
 .stat-card { text-align: center; }
-.status-card { height: 200px; }
+.status-card { min-height: 200px; }
 .health-items { display: flex; flex-direction: column; gap: 10px; }
 .health-item { 
   display: flex; 
@@ -260,7 +260,7 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
   border-radius: 4px; 
   color: var(--text-primary);
 }
-.nodes-memory { display: flex; flex-direction: column; gap: 12px; max-height: 150px; overflow-y: auto; }
+.nodes-memory { display: flex; flex-direction: column; gap: 12px; }
 .node-memory-item { padding: 8px; background: var(--bg-hover); border-radius: 6px; }
 .node-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .node-name { font-weight: 500; font-size: 13px; color: var(--text-primary); }
