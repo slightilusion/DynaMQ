@@ -579,16 +579,57 @@ public class AdminController {
         sendJson(ctx, status);
     }
 
+    private static final String METRICS_KEY_PREFIX = "dynamq:metrics:";
+
     /**
      * GET /api/admin/metrics/realtime
-     * Returns real-time metrics for monitoring dashboard
+     * Returns real-time metrics for monitoring dashboard.
+     * Reads cumulative metrics from Redis for cluster-wide consistency.
      */
     public void getRealtimeMetrics(RoutingContext ctx) {
-        // Get cluster-wide active connections from Redis (dynamq:connection:* keys)
-        redis.keys("dynamq:connection:*")
-                .onSuccess(response -> {
-                    long clusterActiveConnections = response != null ? response.size()
-                            : MetricsVerticle.getActiveConnections();
+        // Fetch all metrics from Redis in a single MGET call for efficiency
+        List<String> metricsKeys = List.of(
+                METRICS_KEY_PREFIX + "messagesReceived",
+                METRICS_KEY_PREFIX + "messagesSent",
+                METRICS_KEY_PREFIX + "totalConnections",
+                METRICS_KEY_PREFIX + "rejectedConnections",
+                METRICS_KEY_PREFIX + "messagesQos0",
+                METRICS_KEY_PREFIX + "messagesQos1",
+                METRICS_KEY_PREFIX + "messagesQos2",
+                METRICS_KEY_PREFIX + "kafkaPublishSuccess",
+                METRICS_KEY_PREFIX + "kafkaPublishFailed",
+                METRICS_KEY_PREFIX + "subscriptionCount",
+                MetricsVerticle.getClusterStartTimeKey() // index 10: cluster start time
+        );
+
+        // Get cluster-wide active connections and all metrics
+        Future<io.vertx.redis.client.Response> connectionsFuture = redis.keys("dynamq:connection:*");
+        Future<io.vertx.redis.client.Response> metricsFuture = redis.mget(metricsKeys);
+
+        Future.all(connectionsFuture, metricsFuture)
+                .onSuccess(cf -> {
+                    io.vertx.redis.client.Response connectionsResponse = connectionsFuture.result();
+                    io.vertx.redis.client.Response metricsResponse = metricsFuture.result();
+
+                    long clusterActiveConnections = connectionsResponse != null ? connectionsResponse.size() : 0;
+
+                    // Parse metrics from Redis response, fallback to 0 if null
+                    long messagesReceived = parseMetricValue(metricsResponse, 0);
+                    long messagesSent = parseMetricValue(metricsResponse, 1);
+                    long totalConnections = parseMetricValue(metricsResponse, 2);
+                    long rejectedConnections = parseMetricValue(metricsResponse, 3);
+                    long messagesQos0 = parseMetricValue(metricsResponse, 4);
+                    long messagesQos1 = parseMetricValue(metricsResponse, 5);
+                    long messagesQos2 = parseMetricValue(metricsResponse, 6);
+                    long kafkaPublishSuccess = parseMetricValue(metricsResponse, 7);
+                    long kafkaPublishFailed = parseMetricValue(metricsResponse, 8);
+                    long subscriptionCount = parseMetricValue(metricsResponse, 9);
+                    long clusterStartTime = parseMetricValue(metricsResponse, 10);
+
+                    // Calculate cluster uptime (if no cluster start time, use local uptime)
+                    long clusterUptime = clusterStartTime > 0
+                            ? (System.currentTimeMillis() - clusterStartTime) / 1000
+                            : MetricsVerticle.getUptimeSeconds();
 
                     Runtime runtime = Runtime.getRuntime();
                     long totalMemory = runtime.totalMemory();
@@ -598,24 +639,24 @@ public class AdminController {
 
                     JsonObject metrics = new JsonObject()
                             .put("timestamp", Instant.now().toEpochMilli())
-                            .put("uptime", MetricsVerticle.getUptimeSeconds())
+                            .put("uptime", clusterUptime)
                             .put("connections", new JsonObject()
                                     .put("active", clusterActiveConnections)
-                                    .put("total", MetricsVerticle.getTotalConnections())
-                                    .put("rejected", MetricsVerticle.getRejectedConnections()))
+                                    .put("total", totalConnections)
+                                    .put("rejected", rejectedConnections))
                             .put("messages", new JsonObject()
-                                    .put("received", MetricsVerticle.getMessagesReceived())
-                                    .put("sent", MetricsVerticle.getMessagesSent())
-                                    .put("receiveRate", String.format("%.1f", MetricsVerticle.getReceiveRate()))
-                                    .put("sendRate", String.format("%.1f", MetricsVerticle.getSendRate())))
+                                    .put("received", messagesReceived)
+                                    .put("sent", messagesSent)
+                                    .put("receiveRate", String.format("%.1f", MetricsVerticle.getClusterReceiveRate()))
+                                    .put("sendRate", String.format("%.1f", MetricsVerticle.getClusterSendRate())))
                             .put("qos", new JsonObject()
-                                    .put("qos0", MetricsVerticle.getMessagesQos0())
-                                    .put("qos1", MetricsVerticle.getMessagesQos1())
-                                    .put("qos2", MetricsVerticle.getMessagesQos2()))
+                                    .put("qos0", messagesQos0)
+                                    .put("qos1", messagesQos1)
+                                    .put("qos2", messagesQos2))
                             .put("kafka", new JsonObject()
-                                    .put("publishSuccess", MetricsVerticle.getKafkaPublishSuccess())
-                                    .put("publishFailed", MetricsVerticle.getKafkaPublishFailed()))
-                            .put("subscriptions", MetricsVerticle.getSubscriptionCount())
+                                    .put("publishSuccess", kafkaPublishSuccess)
+                                    .put("publishFailed", kafkaPublishFailed))
+                            .put("subscriptions", subscriptionCount)
                             .put("memory", new JsonObject()
                                     .put("used", usedMemory)
                                     .put("total", totalMemory)
@@ -632,47 +673,68 @@ public class AdminController {
                 })
                 .onFailure(err -> {
                     // Fallback to local metrics if Redis fails
-                    log.warn("Failed to get cluster connections from Redis, using local count");
-                    Runtime runtime = Runtime.getRuntime();
-                    long totalMemory = runtime.totalMemory();
-                    long freeMemory = runtime.freeMemory();
-                    long usedMemory = totalMemory - freeMemory;
-                    long maxMemory = runtime.maxMemory();
-
-                    JsonObject metrics = new JsonObject()
-                            .put("timestamp", Instant.now().toEpochMilli())
-                            .put("uptime", MetricsVerticle.getUptimeSeconds())
-                            .put("connections", new JsonObject()
-                                    .put("active", MetricsVerticle.getActiveConnections())
-                                    .put("total", MetricsVerticle.getTotalConnections())
-                                    .put("rejected", MetricsVerticle.getRejectedConnections()))
-                            .put("messages", new JsonObject()
-                                    .put("received", MetricsVerticle.getMessagesReceived())
-                                    .put("sent", MetricsVerticle.getMessagesSent())
-                                    .put("receiveRate", String.format("%.1f", MetricsVerticle.getReceiveRate()))
-                                    .put("sendRate", String.format("%.1f", MetricsVerticle.getSendRate())))
-                            .put("qos", new JsonObject()
-                                    .put("qos0", MetricsVerticle.getMessagesQos0())
-                                    .put("qos1", MetricsVerticle.getMessagesQos1())
-                                    .put("qos2", MetricsVerticle.getMessagesQos2()))
-                            .put("kafka", new JsonObject()
-                                    .put("publishSuccess", MetricsVerticle.getKafkaPublishSuccess())
-                                    .put("publishFailed", MetricsVerticle.getKafkaPublishFailed()))
-                            .put("subscriptions", MetricsVerticle.getSubscriptionCount())
-                            .put("memory", new JsonObject()
-                                    .put("used", usedMemory)
-                                    .put("total", totalMemory)
-                                    .put("max", maxMemory)
-                                    .put("free", freeMemory)
-                                    .put("usedPercent", (int) (usedMemory * 100 / totalMemory)))
-                            .put("system", new JsonObject()
-                                    .put("availableProcessors", runtime.availableProcessors()))
-                            .put("routes", new JsonObject()
-                                    .put("total", routeManager.getRouteCount())
-                                    .put("enabled", routeManager.getEnabledRouteCount()));
-
-                    sendJson(ctx, metrics);
+                    log.warn("Failed to get cluster metrics from Redis, using local count: {}", err.getMessage());
+                    sendLocalMetrics(ctx);
                 });
+    }
+
+    /**
+     * Parse a metric value from MGET response at the given index.
+     */
+    private long parseMetricValue(io.vertx.redis.client.Response response, int index) {
+        if (response == null || response.size() <= index || response.get(index) == null) {
+            return 0;
+        }
+        try {
+            return Long.parseLong(response.get(index).toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Send local metrics as fallback when Redis is unavailable.
+     */
+    private void sendLocalMetrics(RoutingContext ctx) {
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        long maxMemory = runtime.maxMemory();
+
+        JsonObject metrics = new JsonObject()
+                .put("timestamp", Instant.now().toEpochMilli())
+                .put("uptime", MetricsVerticle.getUptimeSeconds())
+                .put("connections", new JsonObject()
+                        .put("active", MetricsVerticle.getActiveConnections())
+                        .put("total", MetricsVerticle.getTotalConnections())
+                        .put("rejected", MetricsVerticle.getRejectedConnections()))
+                .put("messages", new JsonObject()
+                        .put("received", MetricsVerticle.getMessagesReceived())
+                        .put("sent", MetricsVerticle.getMessagesSent())
+                        .put("receiveRate", String.format("%.1f", MetricsVerticle.getReceiveRate()))
+                        .put("sendRate", String.format("%.1f", MetricsVerticle.getSendRate())))
+                .put("qos", new JsonObject()
+                        .put("qos0", MetricsVerticle.getMessagesQos0())
+                        .put("qos1", MetricsVerticle.getMessagesQos1())
+                        .put("qos2", MetricsVerticle.getMessagesQos2()))
+                .put("kafka", new JsonObject()
+                        .put("publishSuccess", MetricsVerticle.getKafkaPublishSuccess())
+                        .put("publishFailed", MetricsVerticle.getKafkaPublishFailed()))
+                .put("subscriptions", MetricsVerticle.getSubscriptionCount())
+                .put("memory", new JsonObject()
+                        .put("used", usedMemory)
+                        .put("total", totalMemory)
+                        .put("max", maxMemory)
+                        .put("free", freeMemory)
+                        .put("usedPercent", (int) (usedMemory * 100 / totalMemory)))
+                .put("system", new JsonObject()
+                        .put("availableProcessors", runtime.availableProcessors()))
+                .put("routes", new JsonObject()
+                        .put("total", routeManager.getRouteCount())
+                        .put("enabled", routeManager.getEnabledRouteCount()));
+
+        sendJson(ctx, metrics);
     }
 
     /**

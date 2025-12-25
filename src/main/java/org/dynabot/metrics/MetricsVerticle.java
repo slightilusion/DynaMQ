@@ -26,11 +26,18 @@ import java.util.concurrent.atomic.AtomicLong;
 public class MetricsVerticle extends AbstractVerticle {
 
     private static final String METRICS_KEY_PREFIX = "dynamq:metrics:";
+    private static final String CLUSTER_START_TIME_KEY = "dynamq:cluster:startTime";
 
     private HttpServer httpServer;
     private AppConfig appConfig;
     private static RedisAPI redis;
     private static long startTime = System.currentTimeMillis();
+
+    // Cluster-wide rate calculation (from Redis)
+    private static volatile long lastClusterReceived = 0;
+    private static volatile long lastClusterSent = 0;
+    private static volatile double clusterReceiveRate = 0;
+    private static volatile double clusterSendRate = 0;
 
     // Connection metrics (activeConnections is ephemeral, not persisted)
     private static final AtomicLong activeConnections = new AtomicLong(0);
@@ -132,6 +139,7 @@ public class MetricsVerticle extends AbstractVerticle {
                         redis = RedisAPI.api(conn);
                         log.info("MetricsVerticle connected to Redis - loading persisted metrics");
                         loadMetricsFromRedis();
+                        registerClusterStartTime();
                     })
                     .onFailure(err -> log.warn("Failed to connect MetricsVerticle to Redis: {}", err.getMessage()));
         } catch (Exception e) {
@@ -217,12 +225,57 @@ public class MetricsVerticle extends AbstractVerticle {
     }
 
     private static void calculateRates() {
+        // Local rates (for this node only)
         long currentReceived = messagesReceived.get();
         long currentSent = messagesSent.get();
         receiveRate = (currentReceived - lastMessagesReceived.get()) / 5.0;
         sendRate = (currentSent - lastMessagesSent.get()) / 5.0;
         lastMessagesReceived.set(currentReceived);
         lastMessagesSent.set(currentSent);
+
+        // Cluster-wide rates (from Redis)
+        if (redis != null) {
+            redis.mget(List.of(
+                    METRICS_KEY_PREFIX + "messagesReceived",
+                    METRICS_KEY_PREFIX + "messagesSent")).onSuccess(response -> {
+                        if (response != null && response.size() >= 2) {
+                            long clusterReceived = parseRedisLong(response.get(0));
+                            long clusterSent = parseRedisLong(response.get(1));
+                            clusterReceiveRate = (clusterReceived - lastClusterReceived) / 5.0;
+                            clusterSendRate = (clusterSent - lastClusterSent) / 5.0;
+                            lastClusterReceived = clusterReceived;
+                            lastClusterSent = clusterSent;
+                        }
+                    });
+        }
+    }
+
+    private static long parseRedisLong(io.vertx.redis.client.Response response) {
+        if (response == null)
+            return 0;
+        try {
+            return Long.parseLong(response.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Register cluster start time in Redis using SETNX (only sets if not exists).
+     * This ensures the earliest node's start time is preserved.
+     */
+    private void registerClusterStartTime() {
+        if (redis == null)
+            return;
+        redis.setnx(CLUSTER_START_TIME_KEY, String.valueOf(startTime))
+                .onSuccess(result -> {
+                    if (result.toInteger() == 1) {
+                        log.info("Registered cluster start time: {}", startTime);
+                    } else {
+                        log.debug("Cluster start time already set by another node");
+                    }
+                })
+                .onFailure(err -> log.warn("Failed to register cluster start time: {}", err.getMessage()));
     }
 
     // Helper to increment and persist
@@ -345,6 +398,19 @@ public class MetricsVerticle extends AbstractVerticle {
 
     public static double getSendRate() {
         return sendRate;
+    }
+
+    // Cluster-wide rate getters
+    public static double getClusterReceiveRate() {
+        return clusterReceiveRate;
+    }
+
+    public static double getClusterSendRate() {
+        return clusterSendRate;
+    }
+
+    public static String getClusterStartTimeKey() {
+        return CLUSTER_START_TIME_KEY;
     }
 
     public static long getUptimeSeconds() {
