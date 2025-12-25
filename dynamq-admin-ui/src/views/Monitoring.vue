@@ -52,27 +52,48 @@
       <el-col :span="8">
         <el-card class="status-card">
           <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Cpu /></el-icon>节点内存使用</span></template>
-          <div class="nodes-memory" v-loading="loadingNodes">
-            <div class="node-memory-item" v-for="node in clusterNodes" :key="node.nodeId">
-              <div class="node-header">
-                <span class="node-name">{{ node.nodeId }}</span>
-                <el-tag :type="node.status === 'online' ? 'success' : 'danger'" size="small">{{ node.status }}</el-tag>
-              </div>
-              <el-progress 
-                v-if="node.memory" 
-                :percentage="node.memory.usedPercent || 0" 
-                :color="getMemoryColor(node.memory.usedPercent)"
-                :stroke-width="8"
-                :show-text="true"
-              />
-              <div class="memory-detail" v-if="node.memory">
-                {{ formatBytes(node.memory.used) }} / {{ formatBytes(node.memory.max) }}
-              </div>
+          <div class="nodes-list" v-loading="loadingNodes">
+            <div class="node-item" v-for="node in clusterNodes" :key="node.nodeId" @click="showNodeDetail(node)">
+              <span>{{ node.nodeId }}</span>
+              <el-tag :type="node.status === 'online' ? 'success' : 'danger'" size="small">{{ node.status }}</el-tag>
             </div>
             <div v-if="clusterNodes.length === 0" class="no-nodes">暂无节点数据</div>
           </div>
         </el-card>
       </el-col>
+
+      <!-- Node Detail Dialog -->
+      <el-dialog v-model="nodeDialogVisible" :title="selectedNode?.nodeId + ' 详情'" width="400px">
+        <div v-if="selectedNode" class="node-detail-dialog">
+          <div class="detail-row">
+            <span class="label">状态:</span>
+            <el-tag :type="selectedNode.status === 'online' ? 'success' : 'danger'">{{ selectedNode.status }}</el-tag>
+          </div>
+          <div class="detail-row" v-if="selectedNode.memory">
+            <span class="label">内存使用:</span>
+            <span>{{ selectedNode.memory.usedPercent }}%</span>
+          </div>
+          <div class="detail-row" v-if="selectedNode.memory">
+            <el-progress 
+              :percentage="selectedNode.memory.usedPercent || 0" 
+              :color="getMemoryColor(selectedNode.memory.usedPercent)"
+              :stroke-width="12"
+            />
+          </div>
+          <div class="detail-row" v-if="selectedNode.memory">
+            <span class="label">已用:</span>
+            <span>{{ formatBytes(selectedNode.memory.used) }}</span>
+          </div>
+          <div class="detail-row" v-if="selectedNode.memory">
+            <span class="label">最大:</span>
+            <span>{{ formatBytes(selectedNode.memory.max) }}</span>
+          </div>
+          <div class="detail-row" v-if="selectedNode.lastHeartbeat">
+            <span class="label">最后心跳:</span>
+            <span>{{ formatHeartbeat(selectedNode.lastHeartbeat) }}</span>
+          </div>
+        </div>
+      </el-dialog>
       <el-col :span="8">
         <el-card class="status-card">
           <template #header><span><el-icon :size="16" style="vertical-align: middle; margin-right: 6px;"><Box /></el-icon>Kafka 统计</span></template>
@@ -146,8 +167,24 @@ const clusterNodes = ref([])
 const loadingHealth = ref(false)
 const loadingNodes = ref(false)
 const connectionHistory = ref([])
+const nodeDialogVisible = ref(false)
+const selectedNode = ref(null)
 const MAX_HISTORY = 60
 let pollingInterval = null
+
+const showNodeDetail = (node) => {
+  selectedNode.value = node
+  nodeDialogVisible.value = true
+}
+
+const formatHeartbeat = (timestamp) => {
+  if (!timestamp) return 'N/A'
+  try {
+    return new Date(timestamp).toLocaleString()
+  } catch {
+    return timestamp
+  }
+}
 
 const fetchMetrics = async () => {
   try {
@@ -260,12 +297,22 @@ onUnmounted(() => { if (pollingInterval) clearInterval(pollingInterval) })
   border-radius: 4px; 
   color: var(--text-primary);
 }
-.nodes-memory { display: flex; flex-direction: column; gap: 12px; }
-.node-memory-item { padding: 8px; background: var(--bg-hover); border-radius: 6px; }
-.node-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.node-name { font-weight: 500; font-size: 13px; color: var(--text-primary); }
-.memory-detail { font-size: 11px; color: var(--text-secondary); margin-top: 4px; text-align: right; }
+.nodes-list { display: flex; flex-direction: column; gap: 10px; }
+.node-item { 
+  display: flex; 
+  justify-content: space-between; 
+  padding: 8px 12px; 
+  background: var(--bg-hover); 
+  border-radius: 6px; 
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--text-primary);
+}
+.node-item:hover { background: var(--border-color); }
 .no-nodes { text-align: center; color: var(--text-secondary); padding: 20px; }
+.node-detail-dialog { display: flex; flex-direction: column; gap: 16px; }
+.detail-row { display: flex; justify-content: space-between; align-items: center; }
+.detail-row .label { color: var(--text-secondary); font-weight: 500; }
 .kafka-stats { display: flex; flex-direction: column; gap: 10px; }
 .kafka-item { 
   display: flex; 

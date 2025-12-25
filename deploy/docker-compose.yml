@@ -10,7 +10,7 @@ services:
     hostname: dynamq-1
     environment:
       - HOSTNAME=dynamq-1
-      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+      - JAVA_OPTS=-Xms4g -Xmx5g -XX:+UseZGC -XX:+ZGenerational -XX:MaxDirectMemorySize=1g -Dvertx.hazelcast.config=/app/cluster.xml
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -30,7 +30,7 @@ services:
     hostname: dynamq-2
     environment:
       - HOSTNAME=dynamq-2
-      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+      - JAVA_OPTS=-Xms4g -Xmx5g -XX:+UseZGC -XX:+ZGenerational -XX:MaxDirectMemorySize=1g -Dvertx.hazelcast.config=/app/cluster.xml
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -52,7 +52,7 @@ services:
     hostname: dynamq-3
     environment:
       - HOSTNAME=dynamq-3
-      - JAVA_OPTS=-Xms256m -Xmx512m -Dvertx.hazelcast.config=/app/cluster.xml
+      - JAVA_OPTS=-Xms4g -Xmx5g -XX:+UseZGC -XX:+ZGenerational -XX:MaxDirectMemorySize=1g -Dvertx.hazelcast.config=/app/cluster.xml
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
