@@ -4,7 +4,7 @@ dynamq:
     ssl-port: 8883
     websocket-port: 8083
     max-connections: 150000
-    verticle-instances: 8
+    verticle-instances: 32
     
   mqtt:
     max-message-size: 65536
@@ -40,13 +40,13 @@ dynamq:
     rate-limit:
       enabled: true
       max-connections-per-ip: 10000
-      connect-rate-per-second: 500
+      connect-rate-per-second: 1000
     
   redis:
     enabled: true
     connection-string: redis://:cqmygysdss@host.docker.internal:6379
-    max-pool-size: 256
-    max-waiting-handlers: 1024
+    max-pool-size: 512
+    max-waiting-handlers: 2048
     password: 
     
   kafka:
@@ -54,10 +54,10 @@ dynamq:
     bootstrap-servers: yelc.eu.org:9092
     topic-prefix: dynamq.
     producer:
-      acks: "1"
+      acks: "0"
       retries: 3
-      batch-size: 16384
-      linger-ms: 5
+      batch-size: 32768
+      linger-ms: 10
     consumer:
       group-id: dynamq-broker
       auto-offset-reset: latest

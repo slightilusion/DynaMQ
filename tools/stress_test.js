@@ -12,11 +12,13 @@ const CONFIG = {
     host: process.env.MQTT_HOST || 'mq.dynabot.org',
     port: parseInt(process.env.MQTT_PORT || '1880'),
     numClients: parseInt(process.env.NUM_CLIENTS || '5000'),
-    messagesPerClient: parseInt(process.env.MESSAGES || '50'),
+    messagesPerClient: parseInt(process.env.MESSAGES || '30'),
     messageInterval: parseInt(process.env.INTERVAL || '200'), // ms
     topicPrefix: process.env.TOPIC_PREFIX || 'sys/test',
     batchSize: parseInt(process.env.BATCH_SIZE || '200'),
     batchDelay: parseInt(process.env.BATCH_DELAY || '300'), // ms
+    continuous: process.env.CONTINUOUS === 'true' || process.env.CONTINUOUS === '1', // 持续模式
+    duration: parseInt(process.env.DURATION || '0'), // 持续时间(秒), 0=永久
 };
 
 // Statistics
@@ -69,31 +71,49 @@ async function createClient(index) {
             client.subscribe(`${CONFIG.topicPrefix}/response/${clientId}`, { qos: 1 });
 
             // Send messages
-            for (let i = 0; i < CONFIG.messagesPerClient; i++) {
-                if (!connected) break;
-
-                const topic = `${CONFIG.topicPrefix}/data/${clientId}`;
-                const payload = JSON.stringify({
-                    client: clientId,
-                    seq: i,
-                    ts: Date.now(),
-                });
-
-                client.publish(topic, payload, { qos: 1 }, (err) => {
-                    if (err) {
-                        stats.publishFailed++;
-                    } else {
-                        stats.messagesSent++;
+            const sendMessages = async () => {
+                let seq = 0;
+                while (connected) {
+                    // 检查是否达到持续时间限制
+                    if (CONFIG.duration > 0) {
+                        const elapsed = (Date.now() - stats.startTime) / 1000;
+                        if (elapsed >= CONFIG.duration) {
+                            break;
+                        }
                     }
-                });
 
-                await sleep(CONFIG.messageInterval);
-            }
+                    // 非持续模式下，检查消息数量限制
+                    if (!CONFIG.continuous && seq >= CONFIG.messagesPerClient) {
+                        break;
+                    }
 
-            // Disconnect after sending all messages
-            setTimeout(() => {
-                client.end();
-            }, 2000);
+                    const topic = `${CONFIG.topicPrefix}/up`;
+                    const payload = JSON.stringify({
+                        client: clientId,
+                        seq: seq++,
+                        ts: Date.now(),
+                    });
+
+                    client.publish(topic, payload, { qos: 1 }, (err) => {
+                        if (err) {
+                            stats.publishFailed++;
+                        } else {
+                            stats.messagesSent++;
+                        }
+                    });
+
+                    await sleep(CONFIG.messageInterval);
+                }
+
+                // 只有非持续模式才自动断开
+                if (!CONFIG.continuous) {
+                    setTimeout(() => {
+                        client.end();
+                    }, 2000);
+                }
+            };
+
+            sendMessages();
         });
 
         client.on('message', (topic, message) => {
