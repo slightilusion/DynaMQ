@@ -79,7 +79,6 @@ public class MqttBrokerVerticle extends AbstractVerticle {
         // Start MQTT servers
         startMqttServers(startPromise);
 
-        // Register on Event Bus for cross-verticle communication
         registerEventBusHandlers();
     }
 
@@ -176,11 +175,21 @@ public class MqttBrokerVerticle extends AbstractVerticle {
 
     @Override
     public void stop(Promise<Void> stopPromise) {
-        log.info("Stopping MqttBrokerVerticle...");
+        log.info("Stopping MqttBrokerVerticle: {}", deploymentID());
 
         // Stop retry scheduler
         if (retryScheduler != null) {
             retryScheduler.stop();
+        }
+
+        // Close Kafka publisher (via PublishHandler)
+        if (publishHandler != null) {
+            publishHandler.closeKafkaPublisher();
+        }
+
+        // Close cluster router
+        if (clusterRouter != null) {
+            clusterRouter.stop();
         }
 
         // Close all client connections gracefully
@@ -195,7 +204,7 @@ public class MqttBrokerVerticle extends AbstractVerticle {
         if (mqttServer != null) {
             mqttServer.close()
                     .onComplete(ar -> {
-                        log.info("MQTT Server stopped");
+                        log.info("MQTT Server stopped for verticle: {}", deploymentID());
                         stopPromise.complete();
                     });
         } else {
@@ -435,21 +444,78 @@ public class MqttBrokerVerticle extends AbstractVerticle {
     }
 
     private void registerEventBusHandlers() {
-        String address = "mqtt.broker." + deploymentID();
 
-        // Handle messages from other verticles
-        vertx.eventBus().<Buffer>consumer(address, message -> {
-            // Process cross-verticle messages (e.g., route to local subscribers)
-            log.trace("Received event bus message: {}", message.body());
+        // Handle local publish from cluster router
+        vertx.eventBus().<io.vertx.core.json.JsonObject>consumer("mqtt.local.publish", message -> {
+            io.vertx.core.json.JsonObject body = message.body();
+            String topic = body.getString("topic");
+            Buffer payload = Buffer.buffer(body.getBinary("payload"));
+            int qos = body.getInteger("qos");
+            boolean retain = body.getBoolean("retain");
+            String excludeClientId = body.getString("excludeClientId");
+
+            // Route to local subscribers (excluding original publisher)
+            java.util.Map<String, Integer> subscribers = subscriptionManager.findMatchingSubscribers(topic);
+            for (java.util.Map.Entry<String, Integer> entry : subscribers.entrySet()) {
+                String subscriberClientId = entry.getKey();
+                if (subscriberClientId.equals(excludeClientId))
+                    continue;
+
+                int subscriberQos = entry.getValue();
+                int effectiveQos = Math.min(qos, subscriberQos);
+
+                // Deliver to local subscriber
+                sessionManager.getSession(subscriberClientId).onSuccess(optSession -> {
+                    if (optSession.isPresent() && optSession.get().isConnected()
+                            && optSession.get().getEndpoint() != null) {
+                        ClientSession session = optSession.get();
+                        int messageId = effectiveQos > 0 ? session.nextMessageId() : 0;
+                        session.getEndpoint().publish(topic, payload,
+                                io.netty.handler.codec.mqtt.MqttQoS.valueOf(effectiveQos), false, retain, messageId);
+                    }
+                });
+            }
         });
 
-        // Broadcast address for all broker verticles
-        vertx.eventBus().<Buffer>consumer("mqtt.broker.broadcast", message -> {
-            // Handle broadcast messages (e.g., cluster-wide publish)
-            log.trace("Received broadcast message: {}", message.body());
+        // Broadcast address for Event Bus clustering (fallback if no Redis PubSub)
+        vertx.eventBus().<io.vertx.core.json.JsonObject>consumer("dynamq.cluster.broadcast", message -> {
+            io.vertx.core.json.JsonObject body = message.body();
+            String sourceNode = body.getString("sourceNode");
+            if (appConfig.getNodeName().equals(sourceNode))
+                return; // Skip our own broadcast
+
+            String topic = body.getString("topic");
+            Buffer payload = Buffer.buffer(body.getBinary("payload"));
+            int qos = body.getInteger("qos");
+            boolean retain = body.getBoolean("retain");
+            String excludeClientId = body.getString("excludeClientId");
+
+            // Trigger local publish
+            vertx.eventBus().publish("mqtt.local.publish", new io.vertx.core.json.JsonObject()
+                    .put("topic", topic).put("payload", payload.getBytes()).put("qos", qos).put("retain", retain)
+                    .put("excludeClientId", excludeClientId));
         });
 
-        log.debug("Event bus handlers registered at: {}", address);
+        // Deliver specific message directly to node
+        vertx.eventBus().<io.vertx.core.json.JsonObject>consumer("mqtt.deliver." + appConfig.getNodeName(), message -> {
+            io.vertx.core.json.JsonObject body = message.body();
+            String clientId = body.getString("clientId");
+            String topic = body.getString("topic");
+            Buffer payload = Buffer.buffer(body.getBinary("payload"));
+            int qos = body.getInteger("qos");
+
+            sessionManager.getSession(clientId).onSuccess(optSession -> {
+                if (optSession.isPresent() && optSession.get().isConnected()
+                        && optSession.get().getEndpoint() != null) {
+                    ClientSession session = optSession.get();
+                    int messageId = qos > 0 ? session.nextMessageId() : 0;
+                    session.getEndpoint().publish(topic, payload, io.netty.handler.codec.mqtt.MqttQoS.valueOf(qos),
+                            false, false, messageId);
+                }
+            });
+        });
+
+        log.debug("Event bus handlers registered for verticle: {}", deploymentID());
     }
 
     // Metrics accessors

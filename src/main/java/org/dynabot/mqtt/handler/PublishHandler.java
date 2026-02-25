@@ -25,26 +25,21 @@ import java.util.Map;
  * Routes messages to subscribers and publishes to Kafka.
  */
 @Slf4j
-@SuppressWarnings("unused") // clusterRouter reserved for cluster message forwarding
 public class PublishHandler {
 
-    private final Vertx vertx;
     private final SessionManager sessionManager;
     private final SubscriptionManager subscriptionManager;
-    private final AppConfig config;
     private final KafkaPublisher kafkaPublisher;
     private final RetainMessageStore retainMessageStore;
-    private final ClusterMessageRouter clusterRouter; // TODO: Use for cluster message forwarding
+    private final ClusterMessageRouter clusterRouter;
     private final AclProvider aclProvider;
 
     public PublishHandler(Vertx vertx, SessionManager sessionManager,
             SubscriptionManager subscriptionManager, AppConfig config,
             RetainMessageStore retainMessageStore, ClusterMessageRouter clusterRouter,
             AclProvider aclProvider, RouteManager routeManager) {
-        this.vertx = vertx;
         this.sessionManager = sessionManager;
         this.subscriptionManager = subscriptionManager;
-        this.config = config;
         this.retainMessageStore = retainMessageStore;
         this.clusterRouter = clusterRouter;
         this.aclProvider = aclProvider;
@@ -87,7 +82,14 @@ public class PublishHandler {
                     handleQoSAck(endpoint, qos, messageId);
 
                     // Route to local subscribers
-                    Future<Void> routeFuture = routeToSubscribers(session.getClientId(), topic, payload, qos, retain);
+                    Future<Void> routeFuture = routeToLocalSubscribers(session.getClientId(), topic, payload, qos,
+                            retain);
+
+                    // Broadcast to cluster
+                    Future<Void> broadcastFuture = clusterRouter != null
+                            ? clusterRouter.broadcastToCluster(topic, payload.getBytes(), qos.value(), retain,
+                                    session.getClientId())
+                            : Future.succeededFuture();
 
                     // Publish to Kafka
                     Future<Void> kafkaFuture = publishToKafka(session.getClientId(), topic, payload, qos);
@@ -96,7 +98,7 @@ public class PublishHandler {
                     Future<Void> retainFuture = retain ? handleRetainMessage(topic, payload, qos)
                             : Future.succeededFuture();
 
-                    return Future.all(routeFuture, kafkaFuture, retainFuture).mapEmpty();
+                    return Future.all(routeFuture, broadcastFuture, kafkaFuture, retainFuture).mapEmpty();
                 });
     }
 
@@ -114,7 +116,7 @@ public class PublishHandler {
         }
     }
 
-    private Future<Void> routeToSubscribers(String publisherClientId, String topic,
+    private Future<Void> routeToLocalSubscribers(String publisherClientId, String topic,
             Buffer payload, MqttQoS qos, boolean retain) {
         Map<String, Integer> subscribers = subscriptionManager.findMatchingSubscribers(topic);
 
@@ -123,27 +125,24 @@ public class PublishHandler {
             return Future.succeededFuture();
         }
 
-        log.debug("Routing to {} subscribers for topic: {}", subscribers.size(), topic);
+        log.debug("Routing to {} local subscribers for topic: {}", subscribers.size(), topic);
 
         // Route to each subscriber
         for (Map.Entry<String, Integer> entry : subscribers.entrySet()) {
             String subscriberClientId = entry.getKey();
+            if (subscriberClientId.equals(publisherClientId)) {
+                // MQTT standard: publishers can receive their own messages if subscribed
+            }
             int subscriberQos = entry.getValue();
-
-            // Don't send to publisher themselves (unless subscribed)
-            // Actually in MQTT, publishers should receive their own messages if subscribed
-
-            // Get effective QoS (min of publisher and subscriber QoS)
             int effectiveQos = Math.min(qos.value(), subscriberQos);
 
-            // Deliver to subscriber
-            deliverToSubscriber(subscriberClientId, topic, payload, effectiveQos);
+            deliverToLocalSubscriber(subscriberClientId, topic, payload, effectiveQos, retain);
         }
 
         return Future.succeededFuture();
     }
 
-    private void deliverToSubscriber(String clientId, String topic, Buffer payload, int qos) {
+    private void deliverToLocalSubscriber(String clientId, String topic, Buffer payload, int qos, boolean retain) {
         sessionManager.getSession(clientId)
                 .onSuccess(optSession -> {
                     if (optSession.isPresent()) {
@@ -152,36 +151,12 @@ public class PublishHandler {
 
                         if (endpoint != null && endpoint.isConnected()) {
                             int messageId = qos > 0 ? session.nextMessageId() : 0;
-
-                            endpoint.publish(topic, payload, MqttQoS.valueOf(qos), false, false, messageId);
-
-                            log.trace("Delivered to {}: topic={}, qos={}", clientId, topic, qos);
-                        } else {
-                            // Client not connected locally, may need to route via Event Bus
-                            routeViaEventBus(clientId, topic, payload, qos);
+                            endpoint.publish(topic, payload, MqttQoS.valueOf(qos), false, retain, messageId);
+                            log.trace("Delivered to local {}: topic={}, qos={}", clientId, topic, qos);
                         }
                     }
                 })
-                .onFailure(err -> {
-                    log.warn("Failed to deliver to {}: {}", clientId, err.getMessage());
-                });
-    }
-
-    private void routeViaEventBus(String clientId, String topic, Buffer payload, int qos) {
-        // For cluster mode: route message to the node where client is connected
-        sessionManager.getClientNode(clientId)
-                .onSuccess(optNode -> {
-                    if (optNode.isPresent()) {
-                        String nodeId = optNode.get();
-                        // Publish to the specific node's address
-                        vertx.eventBus().publish("mqtt.deliver." + nodeId,
-                                io.vertx.core.json.JsonObject.of(
-                                        "clientId", clientId,
-                                        "topic", topic,
-                                        "payload", payload.getBytes(),
-                                        "qos", qos));
-                    }
-                });
+                .onFailure(err -> log.warn("Failed to deliver to {}: {}", clientId, err.getMessage()));
     }
 
     private Future<Void> publishToKafka(String clientId, String topic, Buffer payload, MqttQoS qos) {
@@ -207,5 +182,15 @@ public class PublishHandler {
         log.debug("Storing retain message for topic: {}, qos: {}, size: {}",
                 topic, qos.value(), payload.length());
         return retainMessageStore.store(topic, payload, qos.value());
+    }
+
+    /**
+     * Close the Kafka publisher for resource cleanup.
+     */
+    public void closeKafkaPublisher() {
+        if (kafkaPublisher != null) {
+            kafkaPublisher.close();
+            log.info("Kafka publisher closed");
+        }
     }
 }

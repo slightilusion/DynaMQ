@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Trie-based subscription tree for efficient topic matching.
@@ -12,13 +13,17 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class SubscriptionTree {
 
+    // Pre-compiled pattern for better performance (avoid creating new Pattern each
+    // time)
+    private static final Pattern TOPIC_SEPARATOR = Pattern.compile("/", Pattern.LITERAL);
+
     private final Node root = new Node();
 
     /**
      * Add a subscription to the tree
      */
     public void addSubscription(String clientId, String topicFilter, int qos) {
-        String[] levels = topicFilter.split("/", -1);
+        String[] levels = TOPIC_SEPARATOR.split(topicFilter, -1);
         Node current = root;
 
         for (String level : levels) {
@@ -32,7 +37,7 @@ public class SubscriptionTree {
      * Remove a subscription from the tree
      */
     public void removeSubscription(String clientId, String topicFilter) {
-        String[] levels = topicFilter.split("/", -1);
+        String[] levels = TOPIC_SEPARATOR.split(topicFilter, -1);
         Node current = root;
 
         for (String level : levels) {
@@ -53,12 +58,11 @@ public class SubscriptionTree {
      */
     public Map<String, Integer> match(String topic) {
         Map<String, Integer> result = new HashMap<>();
-        String[] levels = topic.split("/", -1);
-        matchRecursive(root, levels, 0, result);
+        matchRecursiveIter(root, topic, 0, result);
         return result;
     }
 
-    private void matchRecursive(Node node, String[] levels, int index, Map<String, Integer> result) {
+    private void matchRecursiveIter(Node node, String topic, int startIndex, Map<String, Integer> result) {
         if (node == null) {
             return;
         }
@@ -70,24 +74,36 @@ public class SubscriptionTree {
             addSubscribers(hashNode, result);
         }
 
-        if (index >= levels.length) {
-            // Reached end of topic, add subscribers at this node
-            addSubscribers(node, result);
-            return;
-        }
+        int nextSlash = topic.indexOf('/', startIndex);
+        String level;
+        int nextIndex;
 
-        String level = levels[index];
+        if (nextSlash == -1) {
+            level = topic.substring(startIndex);
+            nextIndex = -1; // Indicate end of topic
+        } else {
+            level = topic.substring(startIndex, nextSlash);
+            nextIndex = nextSlash + 1;
+        }
 
         // Check for + wildcard
         Node plusNode = node.children.get("+");
         if (plusNode != null) {
-            matchRecursive(plusNode, levels, index + 1, result);
+            if (nextIndex == -1) {
+                addSubscribers(plusNode, result);
+            } else {
+                matchRecursiveIter(plusNode, topic, nextIndex, result);
+            }
         }
 
         // Check for exact match
         Node exactNode = node.children.get(level);
         if (exactNode != null) {
-            matchRecursive(exactNode, levels, index + 1, result);
+            if (nextIndex == -1) {
+                addSubscribers(exactNode, result);
+            } else {
+                matchRecursiveIter(exactNode, topic, nextIndex, result);
+            }
         }
     }
 
@@ -108,45 +124,51 @@ public class SubscriptionTree {
      * @return true if matches
      */
     public static boolean topicMatches(String topicFilter, String topic) {
-        String[] filterLevels = topicFilter.split("/", -1);
-        String[] topicLevels = topic.split("/", -1);
-
+        int filterLen = topicFilter.length();
+        int topicLen = topic.length();
         int filterIndex = 0;
         int topicIndex = 0;
 
-        while (filterIndex < filterLevels.length) {
-            String filterLevel = filterLevels[filterIndex];
+        while (filterIndex < filterLen) {
+            int nextFilterSlash = topicFilter.indexOf('/', filterIndex);
+            String filterLevel = nextFilterSlash == -1 ? topicFilter.substring(filterIndex)
+                    : topicFilter.substring(filterIndex, nextFilterSlash);
 
             if ("#".equals(filterLevel)) {
-                // # matches everything remaining
                 return true;
             }
 
-            if (topicIndex >= topicLevels.length) {
-                // Topic exhausted but filter has more levels
+            if (topicIndex > topicLen) {
                 return false;
             }
 
-            String topicLevel = topicLevels[topicIndex];
+            int nextTopicSlash = topicIndex <= topicLen && topicIndex < topicLen ? topic.indexOf('/', topicIndex) : -1;
+            String topicLevel;
+
+            if (topicIndex == topicLen) {
+                topicLevel = ""; // trailing slash edge case
+                topicIndex = topicLen + 1;
+            } else if (nextTopicSlash == -1) {
+                topicLevel = topic.substring(topicIndex);
+                topicIndex = topicLen + 1;
+            } else {
+                topicLevel = topic.substring(topicIndex, nextTopicSlash);
+                topicIndex = nextTopicSlash + 1;
+            }
 
             if ("+".equals(filterLevel)) {
-                // + matches any single level
-                filterIndex++;
-                topicIndex++;
+                filterIndex = nextFilterSlash == -1 ? filterLen + 1 : nextFilterSlash + 1;
                 continue;
             }
 
             if (!filterLevel.equals(topicLevel)) {
-                // Exact match failed
                 return false;
             }
 
-            filterIndex++;
-            topicIndex++;
+            filterIndex = nextFilterSlash == -1 ? filterLen + 1 : nextFilterSlash + 1;
         }
 
-        // Both must be exhausted
-        return topicIndex >= topicLevels.length;
+        return topicIndex > topicLen;
     }
 
     /**

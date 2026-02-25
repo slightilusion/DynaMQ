@@ -23,7 +23,7 @@ public class SubscriptionManager {
     private final SubscriptionTree subscriptionTree;
     private final ConcurrentHashMap<String, Map<String, Integer>> clientSubscriptions = new ConcurrentHashMap<>();
     private RedisAPI redis;
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private ObjectMapper objectMapper = org.dynabot.util.JsonUtils.getMapper();
 
     public static SubscriptionManager create(Vertx vertx) {
         return new SubscriptionManager(vertx);

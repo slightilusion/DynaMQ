@@ -1,12 +1,12 @@
 package org.dynabot.session;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.redis.client.*;
 import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
+import org.dynabot.util.JsonUtils;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -21,6 +21,7 @@ public class RedisSessionManager implements SessionManager {
 
     private static final String SESSION_KEY_PREFIX = "dynamq:session:";
     private static final String CONNECTION_KEY_PREFIX = "dynamq:connection:";
+    private static final String SESSION_COUNT_KEY = "dynamq:session:count";
     private static final String KICK_CHANNEL = "dynamq:cluster:kick";
 
     private final Vertx vertx;
@@ -35,9 +36,8 @@ public class RedisSessionManager implements SessionManager {
         this.vertx = vertx;
         this.config = config;
 
-        // Initialize ObjectMapper
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.registerModule(new JavaTimeModule());
+        // Use shared ObjectMapper from JsonUtils
+        this.objectMapper = JsonUtils.getMapper();
 
         // Create Redis client
         RedisOptions options = new RedisOptions()
@@ -97,10 +97,13 @@ public class RedisSessionManager implements SessionManager {
                 .build();
 
         return saveSession(session)
-                .map(v -> {
-                    localCache.put(clientId, session);
-                    log.debug("Created new session in Redis for: {}", clientId);
-                    return session;
+                .compose(v -> {
+                    // Increment session count
+                    return redis.incr(SESSION_COUNT_KEY).map(r -> {
+                        localCache.put(clientId, session);
+                        log.debug("Created new session in Redis for: {}", clientId);
+                        return session;
+                    });
                 });
     }
 
@@ -174,7 +177,14 @@ public class RedisSessionManager implements SessionManager {
 
         if (permanent) {
             String sessionKey = SESSION_KEY_PREFIX + clientId;
-            return redis.del(java.util.List.of(sessionKey, connectionKey)).mapEmpty();
+            return redis.del(java.util.List.of(sessionKey, connectionKey))
+                    .compose(deleted -> {
+                        // Decrement session count if session was actually deleted
+                        if (deleted != null && deleted.toInteger() > 0) {
+                            return redis.decr(SESSION_COUNT_KEY).mapEmpty();
+                        }
+                        return Future.succeededFuture();
+                    });
         } else {
             return redis.del(java.util.List.of(connectionKey)).mapEmpty();
         }
@@ -290,10 +300,15 @@ public class RedisSessionManager implements SessionManager {
 
     @Override
     public Future<Long> getSessionCount() {
-        return redis.keys(SESSION_KEY_PREFIX + "*")
+        // Use dedicated counter instead of KEYS command for O(1) performance
+        return redis.get(SESSION_COUNT_KEY)
                 .map(response -> {
                     if (response != null) {
-                        return (long) response.size();
+                        try {
+                            return Long.parseLong(response.toString());
+                        } catch (NumberFormatException e) {
+                            return 0L;
+                        }
                     }
                     return 0L;
                 });

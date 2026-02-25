@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
 
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -82,8 +83,11 @@ public class MetricsVerticle extends AbstractVerticle {
         // Register custom metrics
         registerMetrics(registry);
 
-        // Start rate calculator timer
-        vertx.setPeriodic(5000, id -> calculateRates());
+        // Start rate calculator and flush timer
+        vertx.setPeriodic(5000, id -> {
+            calculateRates();
+            flushMetrics();
+        });
 
         // Create HTTP server for metrics endpoint
         Router router = Router.router(vertx);
@@ -278,18 +282,34 @@ public class MetricsVerticle extends AbstractVerticle {
                 .onFailure(err -> log.warn("Failed to register cluster start time: {}", err.getMessage()));
     }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, AtomicLong> pendingDeltas = new java.util.concurrent.ConcurrentHashMap<>();
+
     // Helper to increment and persist
     private static void incrementAndPersist(AtomicLong counter, String name) {
         counter.incrementAndGet();
         if (redis != null) {
-            redis.incr(METRICS_KEY_PREFIX + name);
+            pendingDeltas.computeIfAbsent(name, k -> new AtomicLong(0)).incrementAndGet();
         }
     }
 
     private static void addAndPersist(AtomicLong counter, String name, long delta) {
         counter.addAndGet(delta);
         if (redis != null) {
-            redis.incrby(METRICS_KEY_PREFIX + name, String.valueOf(delta));
+            pendingDeltas.computeIfAbsent(name, k -> new AtomicLong(0)).addAndGet(delta);
+        }
+    }
+
+    private static void flushMetrics() {
+        if (redis == null)
+            return;
+
+        for (java.util.Map.Entry<String, AtomicLong> entry : pendingDeltas.entrySet()) {
+            long delta = entry.getValue().getAndSet(0);
+            if (delta != 0) {
+                redis.incrby(METRICS_KEY_PREFIX + entry.getKey(), String.valueOf(delta))
+                        .onFailure(err -> log.warn("Failed to flush metric {} to Redis: {}", entry.getKey(),
+                                err.getMessage()));
+            }
         }
     }
 

@@ -7,6 +7,7 @@ import lombok.Builder;
 import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Represents an MQTT client session.
@@ -43,15 +44,15 @@ public class ClientSession {
     @Builder.Default
     private ConcurrentHashMap<Integer, PendingMessage> pendingQoS2 = new ConcurrentHashMap<>();
 
-    // Message ID counter
-    private int lastMessageId;
+    // Message ID counter (using AtomicInteger for lock-free concurrency)
+    @Builder.Default
+    private AtomicInteger messageIdCounter = new AtomicInteger(0);
 
     /**
-     * Get next message ID (1-65535)
+     * Get next message ID (1-65535) using lock-free atomic operation.
      */
-    public synchronized int nextMessageId() {
-        lastMessageId = (lastMessageId % 65535) + 1;
-        return lastMessageId;
+    public int nextMessageId() {
+        return messageIdCounter.updateAndGet(current -> (current % 65535) + 1);
     }
 
     /**

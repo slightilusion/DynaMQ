@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
 import org.dynabot.session.ClientSession;
 import org.dynabot.session.SessionManager;
+import org.dynabot.util.JsonUtils;
 
 import java.util.Base64;
 import java.util.HashMap;
@@ -54,7 +55,7 @@ public class ClusterMessageRouter {
         this.redisEnabled = config.isRedisEnabled();
 
         if (clusterEnabled) {
-            this.objectMapper = new ObjectMapper();
+            this.objectMapper = JsonUtils.getMapper();
             registerEventBusHandlers();
 
             if (redisEnabled) {

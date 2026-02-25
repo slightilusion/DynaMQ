@@ -1,12 +1,9 @@
 package org.dynabot.mqtt;
 
-import io.vertx.core.Handler;
-import io.vertx.mqtt.MqttEndpoint;
 import lombok.extern.slf4j.Slf4j;
 import org.dynabot.config.AppConfig;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -21,7 +18,7 @@ public class ConnectionRateLimiter {
     private final int connectRatePerSecond;
 
     // Track connections per IP
-    private final ConcurrentHashMap<String, AtomicInteger> connectionsPerIp = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Integer> connectionsPerIp = new ConcurrentHashMap<>();
 
     // Track connection rate
     private final AtomicLong connectionCount = new AtomicLong(0);
@@ -49,35 +46,38 @@ public class ConnectionRateLimiter {
             return true;
         }
 
-        // Extract IP from address (format: "/ip:port" or "ip:port")
+        // Extract IP from address
         String ip = extractIp(remoteAddress);
 
-        // Check per-IP limit
-        AtomicInteger ipCount = connectionsPerIp.computeIfAbsent(ip, k -> new AtomicInteger(0));
-        if (ipCount.get() >= maxConnectionsPerIp) {
+        // Track per-IP limit using atomic compute to avoid race conditions
+        int ipCount = connectionsPerIp.compute(ip, (k, v) -> v == null ? 1 : v + 1);
+        if (ipCount > maxConnectionsPerIp) {
             log.warn("Rate limit: IP {} exceeded max connections ({})", ip, maxConnectionsPerIp);
+            // Revert increment
+            connectionsPerIp.computeIfPresent(ip, (k, v) -> v <= 1 ? null : v - 1);
             return false;
         }
 
-        // Check overall rate limit
+        // Check overall rate limit with fixed race condition
         long now = System.currentTimeMillis();
-        long elapsed = now - lastResetTime.get();
+        long expected = lastResetTime.get();
 
-        if (elapsed >= 1000) {
-            // Reset counter every second
-            if (lastResetTime.compareAndSet(lastResetTime.get(), now)) {
+        if (now - expected >= 1000) {
+            // Use CAS with the captured expected value to avoid race condition
+            if (lastResetTime.compareAndSet(expected, now)) {
                 connectionCount.set(0);
             }
         }
 
         if (connectionCount.get() >= connectRatePerSecond) {
             log.warn("Rate limit: Connection rate exceeded ({}/sec)", connectRatePerSecond);
+            // Revert IP increment
+            connectionsPerIp.computeIfPresent(ip, (k, v) -> v <= 1 ? null : v - 1);
             return false;
         }
 
         // Allow connection
         connectionCount.incrementAndGet();
-        ipCount.incrementAndGet();
         return true;
     }
 
@@ -90,35 +90,35 @@ public class ConnectionRateLimiter {
         }
 
         String ip = extractIp(remoteAddress);
-        AtomicInteger ipCount = connectionsPerIp.get(ip);
-        if (ipCount != null) {
-            int count = ipCount.decrementAndGet();
-            if (count <= 0) {
-                connectionsPerIp.remove(ip);
-            }
-        }
+        connectionsPerIp.computeIfPresent(ip, (k, v) -> v <= 1 ? null : v - 1);
     }
 
     private String extractIp(String remoteAddress) {
         if (remoteAddress == null) {
             return "unknown";
         }
-        // Remove leading "/" if present
-        String addr = remoteAddress.startsWith("/") ? remoteAddress.substring(1) : remoteAddress;
-        // Remove port
-        int colonIndex = addr.lastIndexOf(':');
-        if (colonIndex > 0) {
-            return addr.substring(0, colonIndex);
+
+        int start = 0;
+        int len = remoteAddress.length();
+        if (len > 0 && remoteAddress.charAt(0) == '/') {
+            start = 1;
         }
-        return addr;
+
+        int colonIndex = remoteAddress.lastIndexOf(':');
+        int end = (colonIndex > start) ? colonIndex : len;
+
+        if (start == 0 && end == len) {
+            return remoteAddress;
+        }
+        return remoteAddress.substring(start, end);
     }
 
     /**
      * Get current connection count for an IP
      */
     public int getConnectionCount(String ip) {
-        AtomicInteger count = connectionsPerIp.get(extractIp(ip));
-        return count != null ? count.get() : 0;
+        Integer count = connectionsPerIp.get(extractIp(ip));
+        return count != null ? count : 0;
     }
 
     /**
